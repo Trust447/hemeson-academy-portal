@@ -16,23 +16,25 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    /* Deep Indigo Primary */
-    --primary: 234 89% 58%;
+     /* Navy Blue Primary */
+    --primary: 210 65% 24%;
     --primary-foreground: 0 0% 100%;
     --primary-glow: 234 89% 68%;
 
-    /* Warm Slate Secondary */
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 222 47% 11%;
+     /* sky Blue Primary */
+    --secondary: 199 89% 48%;
+    --secondary-foreground: 0 0% 100%;
 
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%;
+   
+       /* Light Blue Muted */
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
 
-    /* Teal Accent */
-    --accent: 173 80% 40%;
+    /* Sky Blue Accent */
+    --accent: 199 89% 48%;
     --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 84% 60%;
+     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
     /* Success/Warning colors */

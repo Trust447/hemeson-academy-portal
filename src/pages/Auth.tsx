@@ -177,7 +177,7 @@ export default function Auth() {
               {isLogin ? 'Sign In' : 'Sign Up'}
             </Button>
 
-            <Button
+            {/* <Button
               type="button"
               variant="ghost"
               className="w-full"
@@ -188,7 +188,7 @@ export default function Auth() {
               disabled={isLoading}
             >
               {isLogin ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
-            </Button>
+            </Button> */}
           </CardFooter>
         </form>
       </Card>

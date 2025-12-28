@@ -8,31 +8,31 @@ const testimonials = [
   {
     name: "Mrs. Edith Chimezie",
     role: "Parent of JSS2 Student",
-    image: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200&auto=format&fit=crop",
+    image: "/testimonials/edith.webp",
     quote: "Nice school, my children's academic performance is a testimony.",
     rating: 5,
   },
   {
-    name: "Dr. Emmanuel Adeyemi",
+    name: "Mr. Emmanuel Okoro",
     role: "Parent of SSS2 Student",
-    image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=200&auto=format&fit=crop",
+    image: "/testimonials/emmanuel.webp",
     quote: "The quality of education and the caliber of teachers here is exceptional. My son is being prepared not just for exams, but for life.",
     rating: 5,
   },
-  // {
-  //   name: "Mrs. Funke Ibrahim",
-  //   role: "Parent of Two Students",
-  //   image: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=200&auto=format&fit=crop",
-  //   quote: "Both my children attend Hemeson, and I couldn't be happier. The school's values-based education aligns perfectly with what we teach at home.",
-  //   rating: 5,
-  // },
-  // {
-  //   name: "Chief Olumide Bankole",
-  //   role: "Parent & Board Member",
-  //   image: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=200&auto=format&fit=crop",
-  //   quote: "As a businessman, I appreciate excellence. Hemeson Academy consistently delivers academic excellence while nurturing well-rounded individuals.",
-  //   rating: 5,
-  // },
+  {
+    name: "Mrs. Oluchi Mark",
+    role: "Parent of Two Students",
+    image: "/testimonials/oluchi.webp",
+    quote: "Both my children attend Hemeson, and I couldn't be happier. The school's values-based education aligns perfectly with what we teach at home.",
+    rating: 5,
+  },
+  {
+    name: "Mr. Chukwuemeka Maduka",
+    role: "Parent & Board Member",
+    image: "/testimonials/chukwuemeka.webp",
+    quote: "As a businessman, I appreciate excellence. Hemeson Academy consistently delivers academic excellence while nurturing well-rounded individuals.",
+    rating: 5,
+  },
 ];
 
 export function TestimonialsSection() {

@@ -48,23 +48,24 @@ export function Navbar() {
       >
         <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 lg:h-20">
-            {/* Logo */}
-          
-            {/* Desktop Navigation */}<Link to="/" className="flex items-center gap-3 group">
-            <div className="w-12 h-12 rounded-xl bg-[#f1f5f9] flex items-center justify-center shadow-lg group-hover:shadow-xl transition-shadow">
-              <img src="/hemeson-logo.png" alt="Hemeson Academy Logo" className="w-9 h-10 " />
-            </div>
-            <div className="hidden sm:block">
-              <h1 className="font-display text-xl font-bold text-secondary">Hemeson Academy</h1>
-              <p className="text-xs text-muted-foreground">Excellence in Education</p>
-            </div>
-          </Link>
+
+            {/* Logo */}           
+            <Link to="/" className="flex items-center gap-3 group">
+              <div className="w-12 h-12 rounded-xl bg-[#f1f5f9] flex items-center justify-center shadow-lg group-hover:shadow-xl transition-shadow">
+                <img src="/hemeson-logo.png" alt="Hemeson Academy Logo" className="w-9 h-10 " />
+              </div>
+              <div className="hidden sm:block">
+                <h1 className="font-display text-xl font-bold text-secondary">Hemeson Academy</h1>
+                <p className="text-l text-muted-foreground"><i>Striving for Excellence....</i></p>
+              </div>
+            </Link>
+            {/* Desktop Navigation */}
             <div className="hidden lg:flex items-center gap-1">
               {navLinks.map((link) => (
                 <button
                   key={link.name}
                   onClick={() => scrollToSection(link.href)}
-                  className="px-4 py-2 text-sm font-medium text-secondary hover:text-white transition-colors rounded-full hover:bg-black/5"
+                  className="px-4 py-2 text-sm font-medium text-secondary hover:text-white transition-colors rounded-full hover:bg-primary/80"
                 >
                   {link.name}
                 </button>
@@ -73,8 +74,8 @@ export function Navbar() {
 
             {/* Desktop CTAs */}
             <div className="hidden lg:flex items-center gap-3">
-              <Button className="rounded-full px-8 text-base shadow-lg bg-secondary hover:bg-sky-dark text-secondary-foreground" variant="ghost" size="sm" asChild>
-                <Link to="/teacher">Teacher Portal</Link>
+             <Button size="sm" className="rounded-full px-6" asChild>
+                <Link to="/results">Teacher Portal</Link>
               </Button>
               <Button size="sm" className="rounded-full px-6" asChild>
                 <Link to="/results">Check Results</Link>
@@ -106,11 +107,11 @@ export function Navbar() {
             transition={{ duration: 0.2 }}
             className="fixed inset-0 z-40 lg:hidden"
           >
-            <div 
+            <div
               className="absolute inset-0 bg-black/20 backdrop-blur-sm"
               onClick={() => setIsMobileMenuOpen(false)}
             />
-            <motion.div 
+            <motion.div
               initial={{ y: -300 }}
               animate={{ y: 0 }}
               exit={{ y: -300 }}

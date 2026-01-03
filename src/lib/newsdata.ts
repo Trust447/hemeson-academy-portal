@@ -25,7 +25,7 @@ At Hemeson Academy, we believe education works best when there is a strong partn
   id: "2",
   image: "/news/news2.webp",
   category: "Admissions",
-  date: "December 10, 2024",
+  date: "January 10, 2026",
   title: "Admissions Now Open for New Session",
   excerpt:
     "We are now accepting applications for the new academic session. Limited spaces available.",
@@ -84,7 +84,7 @@ Colour Day exemplifies Hemeson Academy’s commitment to nurturing well-rounded 
   id: "5",
   image: "/news/news5.webp",
   category: "Community",
-  date: "November 20, 2024",
+  date: "November 22, 2025",
   title: "Parents–Teachers Forum Holds Successfully",
   excerpt:
     "The school hosted a productive meeting focused on student welfare and academic growth.",

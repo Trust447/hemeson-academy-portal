@@ -26,18 +26,7 @@ export function HeroSection() {
       <div className="relative container z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-32 lg:py-40">
         <div className="max-w-3xl">
           {/* Badge */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-secondary/20 text-primary text-sm font-medium mb-6"
-          >
-            
-            <span className="w-2 h-2 rounded-full bg-secondary animate-pulse" />
-            <span className="text-sm font-medium text-primary-foreground">
-              Now Accepting 2025/2026 Admissions
-            </span>
-          </motion.div>
+          
 
           {/* Headline */}
           <motion.h1

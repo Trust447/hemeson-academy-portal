@@ -20,7 +20,7 @@ const news = [
     id: 2,
     image: "/news/news2.webp",
     category: "Admissions",
-    date: "December 10, 2025",
+    date: "January 10, 2026",
     title: "Admissions Now Open",
     excerpt: "We are now accepting applications for the new academic session. Limited spaces available.",
   },
@@ -46,7 +46,7 @@ const news = [
     id: 5,
     image: "/news/news5.webp",
     category: "Community",
-    date: "November 20, 2024",
+    date: "November 22, 2025",
     title: "Parents–Teachers Forum Holds Successfully",
     excerpt:
       "The school hosted a productive parents–teachers meeting focused on student welfare, discipline, and academic growth.",

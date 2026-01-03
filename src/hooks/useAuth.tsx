@@ -6,7 +6,7 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
-  isAdmin: boolean;
+  isAdmin: boolean | null;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
@@ -18,39 +18,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
-
-  useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        
-        // Defer role check with setTimeout to prevent deadlock
-        if (session?.user) {
-          setTimeout(() => {
-            checkAdminRole(session.user.id);
-          }, 0);
-        } else {
-          setIsAdmin(false);
-        }
-      }
-    );
-
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      
-      if (session?.user) {
-        checkAdminRole(session.user.id);
-      }
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null); 
 
   const checkAdminRole = async (userId: string) => {
     try {
@@ -62,33 +30,70 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (error) {
         console.error('Error checking admin role:', error);
         setIsAdmin(false);
-        return;
+        return false;
       }
       
-      setIsAdmin(data === true);
+      const isUserAdmin = data === true;
+      setIsAdmin(isUserAdmin);
+      return isUserAdmin;
     } catch (err) {
       console.error('Error checking admin role:', err);
       setIsAdmin(false);
+      return false;
     }
   };
 
+  useEffect(() => {
+    // 1. Initial Session Check
+    const initAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        setSession(session);
+        setUser(session?.user ?? null);
+        
+        if (session?.user) {
+          // WAIT for the role check to finish BEFORE setting loading to false
+          await checkAdminRole(session.user.id);
+        } else {
+          setIsAdmin(false);
+        }
+      } finally {
+        setLoading(false); 
+      }
+    };
+
+    initAuth();
+
+    // 2. Auth State Listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, currentSession) => {
+        setSession(currentSession);
+        setUser(currentSession?.user ?? null);
+        
+        if (currentSession?.user) {
+          // Keep/Set loading to true if a new user logs in
+          setIsAdmin(null); 
+          await checkAdminRole(currentSession.user.id);
+        } else {
+          setIsAdmin(false);
+        }
+        setLoading(false);
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     return { error: error as Error | null };
   };
 
   const signUp = async (email: string, password: string) => {
-    const redirectUrl = `${window.location.origin}/`;
-    
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        emailRedirectTo: redirectUrl
-      }
+      options: { emailRedirectTo: `${window.location.origin}/` }
     });
     return { error: error as Error | null };
   };
@@ -103,7 +108,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       user, 
       session, 
       loading, 
-      isAdmin, 
+      isAdmin: isAdmin === true, 
       signIn, 
       signUp, 
       signOut 
@@ -115,8 +120,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (context === undefined) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };

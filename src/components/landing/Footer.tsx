@@ -138,7 +138,7 @@ export function Footer() {
           <div className="flex flex-col sm:flex-row justify-between items-center gap-4 text-sm text-slate-500">
             <p>© 2025 Hemeson Academy. All rights reserved.</p>
             <div className="flex gap-6">
-              <p>Powered by TRUSTED IDEAS </p>
+              <p className="text-blue-300">Powered by TRUSTED IDEAS </p>
               <a href="#" className="hover:text-white transition-colors">Privacy Policy</a>
               <a href="#" className="hover:text-white transition-colors">Terms of Service</a>
             </div>

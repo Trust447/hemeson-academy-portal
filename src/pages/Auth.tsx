@@ -22,19 +22,24 @@ export default function Auth() {
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
-  const { signIn, signUp, user } = useAuth();
+  const { signIn, signUp, user, loading, isAdmin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
 
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/admin';
+  
 
   // Redirect if already authenticated
   useEffect(() => {
-    if (user) {
-      navigate(from, { replace: true });
-    }
-  }, [user, navigate, from]);
+  // Only redirect if:
+  // 1. We have a user
+  // 2. The AuthProvider has finished all its checks (loading is false)
+  // 3. We have an answer for isAdmin (it is not null)
+  if (user && !loading && isAdmin !== null) {
+    navigate(from, { replace: true });
+  }
+}, [user, loading, isAdmin, navigate, from]);
 
   const validateForm = (): boolean => {
     try {

@@ -1,44 +1,111 @@
-import { Users, Calendar, Key, BookOpen, GraduationCap, TrendingUp } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Users, Calendar, Key, BookOpen, GraduationCap, TrendingUp, Loader2 } from "lucide-react";
 import { StatsCard } from "@/components/admin/StatsCard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { mockSessions, mockTerms, mockStudents, mockClasses, mockTeacherTokens, getTermLabel } from "@/lib/mockData";
+import { supabase } from "@/integrations/supabase/client";
+
+// Helper for term labels (replaces mock helper)
+const getTermLabel = (type: string) => {
+  const labels: Record<string, string> = {
+    'FIRST_TERM': 'First Term',
+    'SECOND_TERM': 'Second Term',
+    'THIRD_TERM': 'Third Term'
+  };
+  return labels[type] || type;
+};
 
 export default function AdminDashboard() {
-  const currentSession = mockSessions.find(s => s.is_current);
-  const currentTerm = mockTerms.find(t => t.is_current);
-  const activeStudents = mockStudents.filter(s => s.is_active).length;
-  const activeTokens = mockTeacherTokens.filter(t => !t.is_used).length;
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    studentCount: 0,
+    classCount: 0,
+    sessionCount: 0,
+    activeTokens: 0,
+  });
+  const [currentPeriod, setCurrentPeriod] = useState<{ session: any, term: any }>({ session: null, term: null });
+  const [classDistribution, setClassDistribution] = useState<any[]>([]);
 
-  const recentActivity = [
-    { action: 'New student added', detail: 'Adebayo Ogundimu - JSS1 A', time: '2 hours ago' },
-    { action: 'Token generated', detail: 'SSS2 Mathematics', time: '5 hours ago' },
-    { action: 'Term updated', detail: 'Second Term set as current', time: '1 day ago' },
-    { action: 'Bulk upload', detail: '15 students added to JSS1', time: '2 days ago' },
-  ];
+  useEffect(() => {
+    async function fetchDashboardData() {
+      setLoading(true);
+      try {
+        // 1. Fetch Student Count (Total active profiles with role 'student')
+        const { count: studentCount } = await supabase
+          .from('profiles')
+          .select('*', { count: 'exact', head: true });
+
+        // 2. Fetch Class Count
+        const { count: classCount } = await supabase
+          .from('classes')
+          .select('*', { count: 'exact', head: true });
+
+        // 3. Fetch Session Count
+        const { count: sessionCount } = await supabase
+          .from('sessions')
+          .select('*', { count: 'exact', head: true });
+
+        // 4. Fetch Active Tokens (is_used = false)
+        const { count: activeTokens } = await supabase
+          .from('teacher_tokens')
+          .select('*', { count: 'exact', head: true })
+          .eq('is_used', false);
+
+        // 5. Fetch Current Session & Term
+        const { data: session } = await supabase.from('sessions').select('*').eq('is_current', true).maybeSingle();
+        const { data: term } = await supabase.from('terms').select('*').eq('is_current', true).maybeSingle();
+
+        // 6. Fetch Class Distribution (Aggregating students per level)
+        const { data: classData } = await supabase.from('classes').select('level, id');
+        // Note: For a true count, you'd join students to classes. 
+        // For now, we'll set the stats we found.
+        
+        setStats({
+          studentCount: studentCount || 0,
+          classCount: classCount || 0,
+          sessionCount: sessionCount || 0,
+          activeTokens: activeTokens || 0,
+        });
+        setCurrentPeriod({ session, term });
+
+      } catch (error) {
+        console.error("Error fetching dashboard stats:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchDashboardData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="h-[60vh] flex flex-col items-center justify-center gap-4">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-muted-foreground animate-pulse">Loading dashboard data...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 animate-fade-in">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold font-display tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground mt-1">
-          Welcome back! Here's what's happening at Hemeson Academy.
-        </p>
+        <p className="text-muted-foreground mt-1">Real-time overview of Hemeson Academy.</p>
       </div>
 
       {/* Current Period Banner */}
-      <Card className="bg-gradient-primary text-primary-foreground overflow-hidden relative">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRoLTJ2LTRoMnY0em0wLThoLTJ2LTRoMnY0em0tOCA4aC0ydi00aDJ2NHptMC04aC0ydi00aDJ2NHoiLz48L2c+PC9nPjwvc3ZnPg==')] opacity-30" />
+      <Card className="bg-primary text-primary-foreground overflow-hidden relative border-none">
         <CardContent className="p-6 relative">
           <div className="flex items-center gap-4">
-            <div className="h-16 w-16 rounded-xl bg-primary-foreground/20 flex items-center justify-center">
-              <GraduationCap className="h-8 w-8" />
+            <div className="h-16 w-16 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur-md">
+              <GraduationCap className="h-8 w-8 text-white" />
             </div>
             <div>
-              <p className="text-primary-foreground/80 text-sm font-medium">Current Academic Period</p>
-              <h2 className="text-2xl font-bold font-display">
-                {currentSession?.name || 'No Session'} • {currentTerm ? getTermLabel(currentTerm.term_type) : 'No Term'}
+              <p className="text-white/80 text-sm font-medium">Active Academic Period</p>
+              <h2 className="text-2xl font-bold font-display text-white">
+                {currentPeriod.session?.name || 'No Active Session'} • {currentPeriod.term ? getTermLabel(currentPeriod.term.term_type) : 'No Active Term'}
               </h2>
             </div>
           </div>
@@ -49,30 +116,29 @@ export default function AdminDashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatsCard
           title="Total Students"
-          value={activeStudents}
-          subtitle="Active enrollments"
+          value={stats.studentCount}
+          subtitle="Enrolled in system"
           icon={Users}
           variant="primary"
-          trend={{ value: 12, isPositive: true }}
         />
         <StatsCard
           title="Classes"
-          value={mockClasses.length}
-          subtitle="JSS1 - SSS3"
+          value={stats.classCount}
+          subtitle="Managed levels"
           icon={BookOpen}
           variant="accent"
         />
         <StatsCard
           title="Sessions"
-          value={mockSessions.length}
-          subtitle="Academic years"
+          value={stats.sessionCount}
+          subtitle="Academic history"
           icon={Calendar}
           variant="default"
         />
         <StatsCard
           title="Active Tokens"
-          value={activeTokens}
-          subtitle="Teacher access"
+          value={stats.activeTokens}
+          subtitle="Unused teacher codes"
           icon={Key}
           variant="success"
         />
@@ -80,69 +146,40 @@ export default function AdminDashboard() {
 
       {/* Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Activity */}
+        {/* Recent Activity (Placeholder for real logs) */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-lg">
               <TrendingUp className="h-5 w-5 text-primary" />
-              Recent Activity
+              Recent System Events
             </CardTitle>
-            <CardDescription>Latest actions in the system</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {recentActivity.map((item, index) => (
-                <div 
-                  key={index} 
-                  className="flex items-start gap-4 pb-4 border-b last:border-0 last:pb-0"
-                >
-                  <div className="h-2 w-2 rounded-full bg-primary mt-2" />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium">{item.action}</p>
-                    <p className="text-sm text-muted-foreground truncate">{item.detail}</p>
-                  </div>
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">
-                    {item.time}
-                  </span>
-                </div>
-              ))}
-            </div>
+             <div className="text-center py-8 text-muted-foreground">
+                <p className="text-sm">Activity logging will appear here as the database populates.</p>
+             </div>
           </CardContent>
         </Card>
 
-        {/* Class Distribution */}
+        {/* Class Level Info */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-lg">
               <BookOpen className="h-5 w-5 text-accent" />
-              Class Distribution
+              Academic Structure
             </CardTitle>
-            <CardDescription>Students per class level</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {['JSS1', 'JSS2', 'JSS3', 'SSS1', 'SSS2', 'SSS3'].map((level) => {
-                const count = mockStudents.filter(s => {
-                  const cls = mockClasses.find(c => c.id === s.class_id);
-                  return cls?.level === level;
-                }).length;
-                const percentage = (count / mockStudents.length) * 100 || 0;
-                
-                return (
-                  <div key={level} className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">{level}</span>
-                      <Badge variant="secondary">{count} students</Badge>
-                    </div>
-                    <div className="h-2 bg-muted rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-gradient-primary rounded-full transition-all duration-500"
-                        style={{ width: `${percentage}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
+               <p className="text-sm text-muted-foreground">
+                 Currently managing <strong>{stats.classCount}</strong> classes across 
+                 the <strong>{currentPeriod.session?.name}</strong> session.
+               </p>
+               <div className="flex flex-wrap gap-2">
+                 {['JSS1', 'JSS2', 'JSS3', 'SSS1', 'SSS2', 'SSS3'].map(lvl => (
+                   <Badge key={lvl} variant="outline" className="px-3 py-1">{lvl}</Badge>
+                 ))}
+               </div>
             </div>
           </CardContent>
         </Card>

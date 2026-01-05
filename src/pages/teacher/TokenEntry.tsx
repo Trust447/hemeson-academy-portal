@@ -5,10 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { GraduationCap, Key, Loader2 } from "lucide-react";
+import { GraduationCap, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { z } from "zod";
 import { Link } from "react-router-dom";
+import { motion } from "framer-motion";
 
 const tokenSchema = z.object({
   token: z.string()
@@ -37,93 +38,126 @@ export default function TeacherTokenEntry() {
     setIsLoading(true);
 
     try {
-      const { data, error: fnError } = await supabase.functions.invoke('validate-teacher-token', {
-        body: { token: token.trim().toUpperCase() }
-      });
+      // 1. DIRECT DATABASE CHECK (Replacing the Edge Function)
+      const { data: tokenData, error: dbError } = await supabase
+        .from('teacher_tokens')
+        .select(`
+          *,
+          classes (id, level),
+          subjects (id, name)
+        `)
+        .eq('token', token.trim().toUpperCase())
+        .single();
 
-      if (fnError) {
-        setError(fnError.message || "Failed to validate token");
+      if (dbError || !tokenData) {
+        setError("Invalid token. Please contact the Admin.");
+        setIsLoading(false);
         return;
       }
 
-      if (data?.error || !data?.valid) {
-        setError(data?.error || "Invalid token");
+      if (tokenData.is_used) {
+        setError("This token has already been used.");
+        setIsLoading(false);
         return;
       }
 
-      // Store token data in session storage and navigate to score entry
+      // 2. FETCH STUDENTS FOR THIS CLASS
+      const { data: students, error: studentError } = await supabase
+        .from('students')
+        .select('id, full_name, admission_number')
+        .eq('class_id', tokenData.class_id)
+        .order('full_name', { ascending: true });
+
+      if (studentError) {
+        console.error("Error fetching students:", studentError);
+      }
+
+      // 3. STORE SESSION DATA
+      // This matches what your /teacher/scores page expects to find
       sessionStorage.setItem('teacherTokenData', JSON.stringify({
-        token: token.trim().toUpperCase(),
-        ...data.token,
-        students: data.students
+        token: tokenData.token,
+        class_id: tokenData.class_id,
+        subject_id: tokenData.subject_id,
+        class_info: tokenData.classes,
+        subject_info: tokenData.subjects,
+        student_list: students || []
       }));
 
       toast({
-        title: "Token Validated",
-        description: `Welcome! You can now enter scores for ${data.token.class?.level} ${data.token.subject?.name}`,
+        title: "Access Granted",
+        description: `Welcome! Score sheet ready for ${tokenData.classes?.level} ${tokenData.subjects?.name}`,
       });
 
+      // 4. NAVIGATE TO SCORING PAGE
       navigate('/teacher/scores');
 
     } catch (err) {
-      console.error('Token validation error:', err);
-      setError("An unexpected error occurred");
+      console.error('Validation error:', err);
+      setError("An unexpected connection error occurred.");
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-subtle p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="flex justify-center mb-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-50 to-slate-100 p-4">
+      <Card className="w-full max-w-md shadow-xl border-none">
+        <CardHeader className="text-center space-y-4">
+          <div className="flex justify-center">
             <Link to="/">
-              <div className="w-28 h-28 rounded-xl bg-slate-100 flex items-center justify-center shadow-lg group-hover:shadow-xl transition-shadow">
-                <img src="/hemeson-logo.png" alt="" className="w-16 h-18" />
+              <div className="w-24 h-24 rounded-2xl bg-white flex items-center justify-center shadow-md hover:shadow-lg transition-all border border-slate-100">
+                <img src="/hemeson-logo.png" alt="Logo" className="w-16 h-18 object-contain" />
               </div>
             </Link>
           </div>
-          <CardTitle className="text-2xl font-display">Teacher Portal</CardTitle>
-          <CardDescription>
-            Enter your unique token to access score entry
-          </CardDescription>
+          <div className="space-y-1">
+            <CardTitle className="text-2xl font-display font-bold">Teacher Portal</CardTitle>
+            <CardDescription>
+              Enter your unique token to record student marks.
+            </CardDescription>
+          </div>
         </CardHeader>
 
         <form onSubmit={handleSubmit}>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="token">Access Token</Label>
+              <Label htmlFor="token" className="text-slate-700">Access Token</Label>
               <Input
                 id="token"
                 type="text"
-                placeholder="Enter your token (e.g., ABC123XY)"
+                placeholder="E.G. MATH-JSS1-ABC"
                 value={token}
                 onChange={(e) => {
                   setToken(e.target.value.toUpperCase());
                   setError(null);
                 }}
                 disabled={isLoading}
-                className={`font-mono text-center text-lg tracking-widest ${error ? 'border-destructive' : ''}`}
+                className={`h-12 font-mono text-center text-lg tracking-widest ${error ? 'border-destructive ring-destructive' : ''}`}
                 maxLength={12}
               />
               {error && (
-                <p className="text-sm text-destructive">{error}</p>
+                <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-sm text-destructive text-center font-medium">
+                  {error}
+                </motion.p>
               )}
             </div>
 
-            <Button type="submit" className="w-full" disabled={isLoading || !token.trim()}>
-              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Validate Token
+            <Button type="submit" className="w-full h-12 text-md" disabled={isLoading || !token.trim()}>
+              {isLoading ? (
+                <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Verifying...</>
+              ) : (
+                "Access Score Sheet"
+              )}
             </Button>
           </CardContent>
         </form>
 
-        <div className="px-6 pb-6">
-          <div className="flex items-center gap-2 p-4 bg-muted/50 rounded-lg">
-            <GraduationCap className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-            <p className="text-sm text-muted-foreground">
-              Tokens are provided by the school admin and are valid for one-time score submission.
+        <div className="px-6 pb-8">
+          <div className="flex items-start gap-3 p-4 bg-blue-50/50 rounded-xl border border-blue-100">
+            <GraduationCap className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Tokens are issued by the Admin and are linked to a specific class and subject. 
+              They expire once you complete a final submission.
             </p>
           </div>
         </div>

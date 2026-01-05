@@ -75,7 +75,7 @@ export function Navbar() {
             {/* Desktop CTAs */}
             <div className="hidden lg:flex items-center gap-3">
              <Button size="sm" className="rounded-full px-6" asChild>
-                <Link to="/results">Teacher Portal</Link>
+                <Link to="/teacher">Teacher Portal</Link>
               </Button>
               <Button size="sm" className="rounded-full px-6" asChild>
                 <Link to="/results">Check Results</Link>

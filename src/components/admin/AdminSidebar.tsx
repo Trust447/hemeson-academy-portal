@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { 
   LayoutDashboard, 
   Calendar, 
@@ -38,9 +39,9 @@ export function AdminSidebar() {
     <Sidebar className="border-r border-sidebar-border">
       <SidebarHeader className="p-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-primary">
-            <GraduationCap className="h-6 w-6 text-primary-foreground" />
-          </div>
+          <Link to="/" className="flex w-12 h-12 rounded-xl items-center justify-center bg-[#f1f5f9]">
+            <img src="/hemeson-logo.png" alt="Hemeson Academy Logo" className="w-9 h-10 " />
+          </Link>
           <div className="flex flex-col">
             <span className="font-display text-lg font-bold text-sidebar-foreground">
               Hemeson

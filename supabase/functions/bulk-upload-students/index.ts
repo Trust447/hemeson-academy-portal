@@ -15,7 +15,7 @@ const ADMISSION_NUMBER_PATTERN = /^[A-Za-z0-9/\-]+$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 interface StudentInput {
-  admission_number: string;
+  admission_number?: string; // Optional: Database trigger will handle it if missing
   first_name: string;
   last_name: string;
   middle_name?: string;
@@ -34,7 +34,6 @@ interface ValidationResult {
 
 function sanitizeString(str: string | undefined, maxLength: number = MAX_STRING_LENGTH): string {
   if (!str) return '';
-  // Trim, remove control characters, limit length
   return str.trim().replace(/[\x00-\x1F\x7F]/g, '').slice(0, maxLength);
 }
 
@@ -48,15 +47,14 @@ function validateStudent(student: unknown, index: number): ValidationResult {
   const s = student as Record<string, unknown>;
   
   // Required fields
-  const admission_number = sanitizeString(s.admission_number as string, 50);
+  const admission_number = s.admission_number ? sanitizeString(s.admission_number as string, 50) : undefined;
   const first_name = sanitizeString(s.first_name as string);
   const last_name = sanitizeString(s.last_name as string);
   const session_id = s.session_id as string;
   const class_level = sanitizeString(s.class_level as string, 10);
   
-  if (!admission_number) {
-    errors.push(`Row ${index + 1}: Admission number is required`);
-  } else if (!ADMISSION_NUMBER_PATTERN.test(admission_number)) {
+  // Only validate pattern if admission_number is provided
+  if (admission_number && !ADMISSION_NUMBER_PATTERN.test(admission_number)) {
     errors.push(`Row ${index + 1}: Admission number contains invalid characters`);
   }
   
@@ -75,7 +73,6 @@ function validateStudent(student: unknown, index: number): ValidationResult {
   if (!session_id) {
     errors.push(`Row ${index + 1}: Session ID is required`);
   } else {
-    // Validate UUID format
     const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidPattern.test(session_id)) {
       errors.push(`Row ${index + 1}: Invalid session ID format`);
@@ -117,7 +114,7 @@ function validateStudent(student: unknown, index: number): ValidationResult {
     valid: true,
     errors: [],
     sanitized: {
-      admission_number,
+      admission_number: admission_number || undefined,
       first_name,
       last_name,
       middle_name: middle_name || undefined,
@@ -131,59 +128,49 @@ function validateStudent(student: unknown, index: number): ValidationResult {
 }
 
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Get authorization header
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
-      console.error('Missing authorization header');
       return new Response(
         JSON.stringify({ error: 'Missing authorization header' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Create Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     
-    // Create client with user's auth token for RLS
     const supabaseClient = createClient(supabaseUrl, supabaseServiceKey, {
       global: { headers: { Authorization: authHeader } }
     });
 
-    // Verify user is admin
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser(
       authHeader.replace('Bearer ', '')
     );
     
     if (userError || !user) {
-      console.error('User authentication failed:', userError);
       return new Response(
         JSON.stringify({ error: 'Authentication failed' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Check admin role using RPC
     const { data: isAdmin, error: roleError } = await supabaseClient.rpc('has_role', {
       _user_id: user.id,
       _role: 'admin'
     });
 
     if (roleError || !isAdmin) {
-      console.error('User is not admin:', roleError);
       return new Response(
         JSON.stringify({ error: 'Insufficient permissions. Admin access required.' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Parse request body
     const body = await req.json();
     const { students } = body;
 
@@ -208,9 +195,6 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Validating ${students.length} students for user ${user.id}`);
-
-    // Validate all students
     const validationResults = students.map((s, i) => validateStudent(s, i));
     const allErrors = validationResults.flatMap(r => r.errors);
     const validStudents = validationResults
@@ -218,7 +202,6 @@ serve(async (req) => {
       .map(r => r.sanitized!);
 
     if (allErrors.length > 0) {
-      console.log(`Validation failed with ${allErrors.length} errors`);
       return new Response(
         JSON.stringify({ 
           success: false,
@@ -231,9 +214,12 @@ serve(async (req) => {
       );
     }
 
-    // Check for duplicate admission numbers in batch
-    const admissionNumbers = validStudents.map(s => s.admission_number);
-    const duplicates = admissionNumbers.filter((item, index) => admissionNumbers.indexOf(item) !== index);
+    // Check for duplicate admission numbers ONLY for those provided in the batch
+    const providedAdmissionNumbers = validStudents
+      .map(s => s.admission_number)
+      .filter((n): n is string => !!n);
+
+    const duplicates = providedAdmissionNumbers.filter((item, index) => providedAdmissionNumbers.indexOf(item) !== index);
     
     if (duplicates.length > 0) {
       return new Response(
@@ -245,12 +231,10 @@ serve(async (req) => {
       );
     }
 
-    // Use service role client for insert (to bypass RLS temporarily for bulk insert)
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Insert students (RLS will still apply based on the policies)
     const studentsToInsert = validStudents.map(s => ({
-      admission_number: s.admission_number,
+      admission_number: s.admission_number, // If this is undefined, the DB trigger handles it
       first_name: s.first_name,
       last_name: s.last_name,
       middle_name: s.middle_name,
@@ -266,9 +250,6 @@ serve(async (req) => {
       .select('id, admission_number');
 
     if (insertError) {
-      console.error('Insert error:', insertError);
-      
-      // Check for unique constraint violation
       if (insertError.code === '23505') {
         return new Response(
           JSON.stringify({ 
@@ -278,14 +259,11 @@ serve(async (req) => {
           { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-      
       return new Response(
         JSON.stringify({ error: 'Failed to insert students', details: insertError.message }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    console.log(`Successfully inserted ${insertedData?.length || 0} students`);
 
     return new Response(
       JSON.stringify({ 
@@ -297,7 +275,6 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Unexpected error:', error);
     return new Response(
       JSON.stringify({ error: 'Internal server error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

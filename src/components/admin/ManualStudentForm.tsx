@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, UserPlus, Calendar } from "lucide-react";
+import { Loader2, UserPlus, Calendar, Phone, GraduationCap } from "lucide-react";
 
 type ClassRow = Database['public']['Tables']['classes']['Row'];
 
@@ -24,13 +24,17 @@ export function ManualStudentForm({ onSaveSuccess }: { onSaveSuccess: () => void
     gender: "",
     class_id: "",
     guardian_number: "",
-    registration_date: new Date().toISOString().split('T')[0], // Defaults to today
+    registration_date: new Date().toISOString().split('T')[0],
     year_registered: new Date().getFullYear().toString(),
   });
 
   useEffect(() => {
     async function getClasses() {
-      const { data } = await supabase.from('classes').select('*');
+      // Improved: Added ordering so Basic 1-5 appear in logical sequence
+      const { data } = await supabase
+        .from('classes')
+        .select('*')
+        .order('level', { ascending: true });
       if (data) setClasses(data);
     }
     getClasses();
@@ -60,7 +64,20 @@ export function ManualStudentForm({ onSaveSuccess }: { onSaveSuccess: () => void
 
       if (error) throw error;
 
-      toast({ title: "Success", description: "Student enrolled successfully." });
+      toast({ title: "Success", description: `${formData.first_name} has been enrolled successfully.` });
+      
+      // Reset form
+      setFormData({
+        ...formData,
+        admission_number: "",
+        first_name: "",
+        last_name: "",
+        middle_name: "",
+        gender: "",
+        class_id: "",
+        guardian_number: "",
+      });
+      
       onSaveSuccess();
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -70,63 +87,80 @@ export function ManualStudentForm({ onSaveSuccess }: { onSaveSuccess: () => void
   };
 
   return (
-    <Card className="max-w-4xl mx-auto shadow-lg">
-      <CardHeader className="bg-primary/5">
-        <CardTitle className="flex items-center gap-2 text-primary">
-          <UserPlus className="h-5 w-5" /> New Student Enrollment
+    <Card className="max-w-4xl mx-auto shadow-xl border-t-4 border-t-primary">
+      <CardHeader className="bg-slate-50/50">
+        <CardTitle className="flex items-center gap-2 text-primary font-display">
+          <UserPlus className="h-6 w-6" /> Student Enrollment Portal
         </CardTitle>
+        <p className="text-sm text-muted-foreground">Register students for Basic, JSS, or SSS levels.</p>
       </CardHeader>
-      <CardContent className="pt-6">
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          
-          <div className="space-y-2">
-            <Label>Admission No.</Label>
-            <Input required value={formData.admission_number} onChange={e => setFormData({...formData, admission_number: e.target.value})} placeholder="HMA/2026/001" />
+      <CardContent className="pt-8">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            
+            {/* Academic Info Section */}
+            {/* <div className="space-y-2">
+              <Label className="text-xs font-bold uppercase text-slate-500">Admission No.</Label>
+              <Input required value={formData.admission_number} onChange={e => setFormData({...formData, admission_number: e.target.value})} placeholder="HMA/2026/001" className="bg-slate-50 border-slate-200" />
+            </div> */}
+
+            <div className="space-y-2">
+              <Label className="text-xs font-bold uppercase text-slate-500">Assigned Class</Label>
+              <Select required onValueChange={val => setFormData({...formData, class_id: val})} value={formData.class_id}>
+                <SelectTrigger className="bg-slate-50"><SelectValue placeholder="Choose Level" /></SelectTrigger>
+                <SelectContent>
+                  {classes.map(c => <SelectItem key={c.id} value={c.id}>{c.level}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs font-bold uppercase text-slate-500 flex items-center gap-1">
+                <Calendar className="h-3 w-3"/> Reg. Date
+              </Label>
+              <Input type="date" value={formData.registration_date} onChange={e => setFormData({...formData, registration_date: e.target.value})} className="bg-slate-50" />
+            </div>
+
+            {/* Personal Info Section */}
+            <div className="space-y-2">
+              <Label className="text-xs font-bold uppercase text-slate-500">First Name</Label>
+              <Input required value={formData.first_name} onChange={e => setFormData({...formData, first_name: e.target.value})} placeholder="John" />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs font-bold uppercase text-slate-500">Middle Name</Label>
+              <Input value={formData.middle_name} onChange={e => setFormData({...formData, middle_name: e.target.value})} placeholder="Olu" />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs font-bold uppercase text-slate-500">Last Name</Label>
+              <Input required value={formData.last_name} onChange={e => setFormData({...formData, last_name: e.target.value})} placeholder="Doe" />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs font-bold uppercase text-slate-500">Gender</Label>
+              <Select onValueChange={val => setFormData({...formData, gender: val})} value={formData.gender}>
+                <SelectTrigger><SelectValue placeholder="Select Gender" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Male">Male</SelectItem>
+                  <SelectItem value="Female">Female</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs font-bold uppercase text-slate-500 flex items-center gap-1">
+                <Phone className="h-3 w-3"/> Guardian Phone
+              </Label>
+              <Input type="tel" value={formData.guardian_number} onChange={e => setFormData({...formData, guardian_number: e.target.value})} placeholder="08012345678" />
+            </div>
+
           </div>
 
-          <div className="space-y-2">
-            <Label>First Name</Label>
-            <Input required value={formData.first_name} onChange={e => setFormData({...formData, first_name: e.target.value})} />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Last Name</Label>
-            <Input required value={formData.last_name} onChange={e => setFormData({...formData, last_name: e.target.value})} />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Class</Label>
-            <Select required onValueChange={val => setFormData({...formData, class_id: val})}>
-              <SelectTrigger><SelectValue placeholder="Select Class" /></SelectTrigger>
-              <SelectContent>
-                {classes.map(c => <SelectItem key={c.id} value={c.id}>{c.level}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Gender</Label>
-            <Select onValueChange={val => setFormData({...formData, gender: val})}>
-              <SelectTrigger><SelectValue placeholder="Select Gender" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Male">Male</SelectItem>
-                <SelectItem value="Female">Female</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Guardian Phone</Label>
-            <Input type="tel" value={formData.guardian_number} onChange={e => setFormData({...formData, guardian_number: e.target.value})} placeholder="08012345678" />
-          </div>
-
-          <div className="space-y-2">
-            <Label className="flex items-center gap-2"><Calendar className="h-3 w-3"/> Registration Date</Label>
-            <Input type="date" value={formData.registration_date} onChange={e => setFormData({...formData, registration_date: e.target.value})} />
-          </div>
-
-          <Button type="submit" className="md:col-span-3 mt-4 h-12 text-lg" disabled={loading}>
-            {loading ? <Loader2 className="animate-spin mr-2" /> : "Complete Registration"}
+          <Button type="submit" className="w-full mt-4 h-12 text-lg shadow-md hover:shadow-lg transition-all" disabled={loading}>
+            {loading ? <Loader2 className="animate-spin mr-2" /> : (
+              <span className="flex items-center gap-2"><GraduationCap className="h-5 w-5"/> Finalize Enrollment</span>
+            )}
           </Button>
         </form>
       </CardContent>

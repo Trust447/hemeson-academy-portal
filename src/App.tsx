@@ -19,7 +19,6 @@ import StudentIDCard from "./pages/admin/StudentIDCard";
 
 // Teacher Pages
 import TeacherTokenEntry from "./pages/teacher/TokenEntry";
-import ScoreEntry from "./pages/teacher/ScoreEntry";
 import SubmissionSuccess from "./pages/teacher/SubmissionSuccess";
 
 // Results Portal
@@ -31,6 +30,9 @@ import ContactPage from "./pages/forms/Contact";
 
 // News
 import NewsDetail from "./pages/news/NewsDetail";
+
+// NOTE: ScoreEntrySheet import removed from here because it is now 
+// rendered as a child of TeacherTokenEntry to receive its props.
 
 const queryClient = new QueryClient();
 
@@ -46,12 +48,11 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
       <TooltipProvider>
-        {/* FIX APPLIED HERE */}
         <Toaster />
         <Sonner /> 
         
         <BrowserRouter>
-        <ScrollToTop />
+          <ScrollToTop />
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
@@ -59,8 +60,8 @@ const App = () => (
             <Route path="/news/:id" element={<NewsDetail />} />
 
             {/* Teacher Routes */}
+            {/* TokenEntry now handles the logic for showing the ScoreSheet internally */}
             <Route path="/teacher" element={<TeacherTokenEntry />} />
-            <Route path="/teacher/scores" element={<ScoreEntry />} />
             <Route path="/teacher/success" element={<SubmissionSuccess />} />
             
             {/* Results Portal */}

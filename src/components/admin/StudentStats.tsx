@@ -13,12 +13,10 @@ export function StudentStats() {
 
   useEffect(() => {
     async function getStats() {
-      // We use 'any' here temporarily to bypass the strict type error 
-      // while your database types are out of sync
+      // Fetching from 'students' table is correct as it contains the gender field
       const { data: allStudents, error } = await supabase
         .from('students')
-        .select('*')
-        .eq('is_active', true);
+        .select('*');
 
       if (error) {
         console.error("Error fetching stats:", error);
@@ -33,12 +31,13 @@ export function StudentStats() {
         const studentList = allStudents as any[];
 
         const total = studentList.length;
-        const male = studentList.filter(s => s.gender === 'Male').length;
-        const female = studentList.filter(s => s.gender === 'Female').length;
+        // Case-insensitive check to avoid errors if gender is 'male' vs 'Male'
+        const male = studentList.filter(s => s.gender?.toLowerCase() === 'male').length;
+        const female = studentList.filter(s => s.gender?.toLowerCase() === 'female').length;
         
         const thisMonth = studentList.filter(s => {
-          if (!s.registration_date) return false;
-          const regDate = new Date(s.registration_date);
+          if (!s.created_at) return false; // Using created_at as a fallback for registration_date
+          const regDate = new Date(s.registration_date || s.created_at);
           return regDate.getMonth() === currentMonth && regDate.getFullYear() === currentYear;
         }).length;
 
@@ -60,13 +59,13 @@ export function StudentStats() {
 
 function StatCard({ title, value, icon, color }: { title: string, value: number, icon: any, color: string }) {
   return (
-    <Card className="shadow-sm border-none bg-slate-50/50">
+    <Card className="shadow-sm border-none bg-slate-50/50 hover:bg-slate-100/50 transition-colors duration-200">
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</CardTitle>
         <div className={color}>{icon}</div>
       </CardHeader>
       <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
+        <div className="text-2xl font-bold tracking-tight">{value}</div>
       </CardContent>
     </Card>
   );

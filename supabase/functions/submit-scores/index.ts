@@ -1,10 +1,10 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+};
 
 interface ScoreInput {
   student_id: string;
@@ -25,27 +25,18 @@ function calculateGrade(total: number): string {
 
 function validateScore(value: number | null, max: number, fieldName: string): string | null {
   if (value === null || value === undefined) return null;
-  if (typeof value !== 'number' || isNaN(value)) {
-    return `${fieldName} must be a number`;
-  }
-  if (value < 0) {
-    return `${fieldName} cannot be negative`;
-  }
-  if (value > max) {
-    return `${fieldName} cannot exceed ${max}`;
-  }
+  if (typeof value !== 'number' || isNaN(value)) return `${fieldName} must be a number`;
+  if (value < 0) return `${fieldName} cannot be negative`;
+  if (value > max) return `${fieldName} cannot exceed ${max}`;
   return null;
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
     const { token, scores, term_id, class_id, subject_id } = await req.json();
 
-    // Validate required fields
     if (!token || !scores || !Array.isArray(scores) || !term_id || !class_id || !subject_id) {
       return new Response(
         JSON.stringify({ error: 'Missing required fields: token, scores, term_id, class_id, subject_id' }),
@@ -54,26 +45,18 @@ serve(async (req) => {
     }
 
     if (scores.length === 0) {
-      return new Response(
-        JSON.stringify({ error: 'No scores provided' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'No scores provided' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     if (scores.length > 100) {
-      return new Response(
-        JSON.stringify({ error: 'Too many scores. Maximum 100 students per submission.' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'Too many scores. Maximum 100 students per submission.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    console.log(`Submitting ${scores.length} scores for token ${token.substring(0, 4)}...`);
-
-    // Verify the token is valid and matches the class/subject
+    // Verify token
     const { data: tokenData, error: tokenError } = await supabase
       .from('teacher_tokens')
       .select('*')
@@ -82,41 +65,21 @@ serve(async (req) => {
       .eq('subject_id', subject_id)
       .maybeSingle();
 
-    if (tokenError || !tokenData) {
-      console.error('Token verification failed:', tokenError);
-      return new Response(
-        JSON.stringify({ error: 'Invalid or mismatched token' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    if (tokenError || !tokenData) return new Response(JSON.stringify({ error: 'Invalid or mismatched token' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    if (tokenData.is_used) return new Response(JSON.stringify({ error: 'Token has already been used' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    if (tokenData.expires_at && new Date(tokenData.expires_at) < new Date()) return new Response(JSON.stringify({ error: 'Token has expired' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-    if (tokenData.is_used) {
-      return new Response(
-        JSON.stringify({ error: 'Token has already been used' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (tokenData.expires_at && new Date(tokenData.expires_at) < new Date()) {
-      return new Response(
-        JSON.stringify({ error: 'Token has expired' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Validate all scores
     const validationErrors: string[] = [];
     const validatedScores: any[] = [];
 
     for (let i = 0; i < scores.length; i++) {
       const score = scores[i] as ScoreInput;
-      
+
       if (!score.student_id) {
         validationErrors.push(`Score ${i + 1}: Missing student_id`);
         continue;
       }
 
-      // UUID validation
       const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!uuidPattern.test(score.student_id)) {
         validationErrors.push(`Score ${i + 1}: Invalid student_id format`);
@@ -141,6 +104,7 @@ serve(async (req) => {
           ca1: score.ca1,
           ca2: score.ca2,
           exam: score.exam,
+          total,
           grade: calculateGrade(total),
           teacher_comment: score.teacher_comment?.trim().slice(0, 500) || null,
           submitted_at: new Date().toISOString()
@@ -148,63 +112,37 @@ serve(async (req) => {
       }
     }
 
-    if (validationErrors.length > 0) {
-      console.log(`Validation failed with ${validationErrors.length} errors`);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Validation failed',
-          details: validationErrors.slice(0, 10) // Return first 10 errors
-        }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // Insert valid scores only
+    let savedCount = 0;
+    if (validatedScores.length > 0) {
+      const { data: insertedScores, error: insertError } = await supabase
+        .from('scores')
+        .upsert(validatedScores, {
+          onConflict: 'student_id,subject_id,term_id',
+          ignoreDuplicates: false
+        })
+        .select('id');
+
+      if (insertError) {
+        console.error('Score insert error:', insertError);
+        return new Response(JSON.stringify({ error: 'Failed to save scores', details: insertError.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      savedCount = insertedScores?.length || 0;
+
+      // Mark token as used only if at least one score saved
+      await supabase.from('teacher_tokens').update({ is_used: true }).eq('id', tokenData.id);
     }
 
-    // Upsert scores (insert or update)
-    const { data: insertedScores, error: insertError } = await supabase
-      .from('scores')
-      .upsert(validatedScores, { 
-        onConflict: 'student_id,subject_id,term_id',
-        ignoreDuplicates: false 
-      })
-      .select('id');
-
-    if (insertError) {
-      console.error('Score insert error:', insertError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to save scores', details: insertError.message }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Mark token as used
-    const { error: tokenUpdateError } = await supabase
-      .from('teacher_tokens')
-      .update({ 
-        is_used: true
-      })
-      .eq('id', tokenData.id);
-
-    if (tokenUpdateError) {
-      console.error('Token update error:', tokenUpdateError);
-      // Scores are already saved, so we'll just log this error
-    }
-
-    console.log(`Successfully saved ${validatedScores.length} scores and marked token as used`);
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        saved: validatedScores.length,
-        message: 'Scores submitted successfully. Token has been expired.'
-      }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({
+      successCount: savedCount,
+      errorCount: validationErrors.length,
+      errors: validationErrors.slice(0, 10),
+      message: `Scores processed. ${savedCount} saved, ${validationErrors.length} failed validation.`
+    }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
     console.error('Unexpected error:', error);
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ error: 'Internal server error' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });

@@ -61,16 +61,16 @@ export default function SchoolForm({ title, description, type }: SchoolFormProps
   };
 
   return (
-    <Card className="w-full max-w-lg mx-auto flex flex-col items-center">
+    <Card className="w-full  mx-auto flex flex-col items-center bg-slate-50 p-4  max-w-lg shadow-lg border-t-8 border-t-blue-600">
       
       {/* Centered Logo Section */}
-      <div className="flex justify-center mt-8 mb-2">
+      <div className="w-24 h-24 rounded-full bg-white flex items-center justify-center border shadow-sm">
         <Link to="/" className="group">
-          <div className="w-28 h-28 rounded-xl bg-slate-100 flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-300">
+          <div className="w-24 h-24 rounded-full bg-white flex items-center justify-center border shadow-sm">
             <img 
               src="/hemeson-logo.png" 
               alt="Hemeson Academy Logo" 
-              className="w-20 h-auto object-contain" 
+              className="w-16 h-16 object-contain" 
             />
           </div>
         </Link>
@@ -78,7 +78,7 @@ export default function SchoolForm({ title, description, type }: SchoolFormProps
 
       {/* Centered Header Text */}
       <CardHeader className="text-center w-full px-6">
-        <CardTitle className="text-3xl font-bold tracking-tight">{title}</CardTitle>
+        <CardTitle className="text-2xl font-bold tracking-tight">{title}</CardTitle>
         <CardDescription className="text-base mt-2">{description}</CardDescription>
       </CardHeader>
 

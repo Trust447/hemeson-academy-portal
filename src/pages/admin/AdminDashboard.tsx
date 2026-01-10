@@ -30,10 +30,11 @@ export default function AdminDashboard() {
     async function fetchDashboardData() {
       setLoading(true);
       try {
-        // 1. Fetch Student Count (Total active profiles with role 'student')
+        // 1. Fetch Student Count (Profiles with role 'student')
         const { count: studentCount } = await supabase
           .from('profiles')
-          .select('*', { count: 'exact', head: true });
+          .select('*', { count: 'exact', head: true })
+          .eq('role', 'student');
 
         // 2. Fetch Class Count
         const { count: classCount } = await supabase
@@ -55,11 +56,6 @@ export default function AdminDashboard() {
         const { data: session } = await supabase.from('sessions').select('*').eq('is_current', true).maybeSingle();
         const { data: term } = await supabase.from('terms').select('*').eq('is_current', true).maybeSingle();
 
-        // 6. Fetch Class Distribution (Aggregating students per level)
-        const { data: classData } = await supabase.from('classes').select('level, id');
-        // Note: For a true count, you'd join students to classes. 
-        // For now, we'll set the stats we found.
-        
         setStats({
           studentCount: studentCount || 0,
           classCount: classCount || 0,
@@ -146,7 +142,7 @@ export default function AdminDashboard() {
 
       {/* Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Activity (Placeholder for real logs) */}
+        {/* Recent Activity */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
@@ -176,7 +172,11 @@ export default function AdminDashboard() {
                  the <strong>{currentPeriod.session?.name}</strong> session.
                </p>
                <div className="flex flex-wrap gap-2">
-                 {['JSS1', 'JSS2', 'JSS3', 'SSS1', 'SSS2', 'SSS3'].map(lvl => (
+                 {[
+                   'Basic 1', 'Basic 2', 'Basic 3', 'Basic 4', 'Basic 5', 
+                   'JSS1', 'JSS2', 'JSS3', 
+                   'SSS1', 'SSS2', 'SSS3'
+                 ].map(lvl => (
                    <Badge key={lvl} variant="outline" className="px-3 py-1">{lvl}</Badge>
                  ))}
                </div>

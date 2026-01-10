@@ -4,52 +4,16 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { GraduationCap, Lock, Loader2, AlertCircle, Phone, } from "lucide-react";
+import { Lock, Loader2, AlertCircle, Phone } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { z } from "zod";
 import ResultCard from "@/components/results/ResultCard";
 import { Link } from "react-router-dom";
-const pinSchema = z.object({
-  admission_number: z.string()
-    .min(1, "Admission number is required")
-    .max(50, "Admission number too long")
-    .regex(/^[A-Z0-9/\-]+$/i, "Invalid admission number format"),
-  pin: z.string()
-    .min(4, "PIN must be at least 4 characters")
-    .max(20, "PIN must be at most 20 characters")
-    .regex(/^[A-Z0-9]+$/i, "PIN must be alphanumeric")
-});
 
-interface ResultData {
-  student: {
-    id: string;
-    admission_number: string;
-    first_name: string;
-    last_name: string;
-    middle_name?: string;
-    class: { level: string; section: string };
-  };
-  term: {
-    id: string;
-    type: string;
-    session: { name: string };
-  };
-  scores: Array<{
-    id: string;
-    ca1: number;
-    ca2: number;
-    exam: number;
-    total: number;
-    grade: string;
-    teacher_comment?: string;
-    subjects: { id: string; name: string; code: string };
-  }>;
-  usage: {
-    count: number;
-    max: number;
-    remaining: number;
-  };
-}
+const pinSchema = z.object({
+  admission_number: z.string().min(1, "Admission number is required"),
+  pin: z.string().min(4, "PIN must be at least 4 characters")
+});
 
 export default function ResultsPortal() {
   const [admissionNumber, setAdmissionNumber] = useState("");
@@ -57,7 +21,7 @@ export default function ResultsPortal() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [usageExceeded, setUsageExceeded] = useState(false);
-  const [resultData, setResultData] = useState<ResultData | null>(null);
+  const [resultData, setResultData] = useState<any | null>(null);
   const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -65,83 +29,122 @@ export default function ResultsPortal() {
     setError(null);
     setUsageExceeded(false);
 
-    const result = pinSchema.safeParse({
+    const validation = pinSchema.safeParse({
       admission_number: admissionNumber.trim(),
       pin: pin.trim()
     });
 
-    if (!result.success) {
-      setError(result.error.errors[0].message);
+    if (!validation.success) {
+      setError(validation.error.errors[0].message);
       return;
     }
 
     setIsLoading(true);
 
     try {
-      const { data, error: fnError } = await supabase.functions.invoke('validate-result-pin', {
-        body: {
-          admission_number: admissionNumber.trim().toUpperCase(),
-          pin: pin.trim()
+      const { data: term, error: termErr } = await (supabase
+        .from('terms')
+        .select('id, term_type, is_current, sessions(name)')
+        .eq('is_current', true)
+        .maybeSingle() as any);
+
+      if (termErr || !term) {
+        throw new Error("No active academic term found.");
+      }
+
+      const { data: pinRecord, error: pinErr } = await (supabase
+        .from('result_pins')
+        .select(`
+          id,
+          pin_code,
+          usage_count,
+          max_uses,
+          student:students!inner(
+            id,
+            admission_number,
+            first_name,
+            last_name,
+            middle_name,
+            classes(level)
+          )
+        `) as any)
+        .eq('pin_code', pin.trim())
+        .eq('student.admission_number', admissionNumber.trim().toUpperCase())
+        .eq('term_id', term.id)
+        .maybeSingle();
+
+      if (pinErr || !pinRecord) {
+        setError("Invalid Admission Number or PIN for this term.");
+        return;
+      }
+
+      const { data: scores, error: scoresErr } = await (supabase
+        .from('scores') 
+        .select(`
+          id,
+          ca1,
+          ca2,
+          exam,
+          total,
+          grade,
+          subjects(id, name, code)
+        `) as any)
+        .eq('student_id', pinRecord.student.id)
+        .eq('term_id', term.id);
+
+      if (scoresErr) throw new Error("Could not retrieve score records.");
+
+      await supabase
+        .from('result_pins')
+        .update({ usage_count: (pinRecord.usage_count || 0) + 1 })
+        .eq('id', pinRecord.id);
+
+      const finalResult = {
+        student: {
+          ...pinRecord.student,
+          class: { level: pinRecord.student.classes?.level || "N/A" }
+        },
+        term: {
+          id: term.id,
+          type: term.term_type || "Current Term", 
+          session: { name: term.sessions?.name || "Current Session" }
+        },
+        scores: scores || [],
+        usage: {
+          count: (pinRecord.usage_count || 0) + 1,
+          max: 999,
+          remaining: 999
         }
-      });
+      };
 
-      if (fnError) {
-        setError(fnError.message || "Failed to validate credentials");
-        return;
-      }
+      setResultData(finalResult);
+      toast({ title: "Results Loaded", description: "Successfully retrieved academic records." });
 
-      if (data?.usage_exceeded) {
-        setUsageExceeded(true);
-        setError(data.error);
-        return;
-      }
-
-      if (data?.error || !data?.valid) {
-        setError(data?.error || "Invalid credentials");
-        return;
-      }
-
-      // Show results
-      setResultData(data);
-
-      toast({
-        title: "Results Loaded",
-        description: `Viewing ${data.usage.remaining} more time(s) remaining.`,
-      });
-
-    } catch (err) {
-      console.error('Validation error:', err);
-      setError("An unexpected error occurred");
+    } catch (err: any) {
+      console.error('Portal Error:', err);
+      setError(err.message || "An unexpected error occurred");
     } finally {
       setIsLoading(false);
     }
   };
 
-  // If we have result data, show the result card
   if (resultData) {
-    return (
-      <ResultCard
-        data={resultData}
-        onBack={() => setResultData(null)}
-      />
-    );
+    return <ResultCard data={resultData} onBack={() => setResultData(null)} />;
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-subtle p-4">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+      <Card className="w-full max-w-md shadow-2xl border-t-8 border-t-blue-600">
         <CardHeader className="text-center">
-          <div className="flex justify-center mb-4">
-            <Link to="/">
-              <div className="w-28 h-28 rounded-xl bg-slate-100 flex items-center justify-center shadow-lg group-hover:shadow-xl transition-shadow">
-                <img src="/hemeson-logo.png" alt="" className="w-16 h-18" />
+          <div className="rounded-full flex items-center justify-center">
+            <Link to="/" className="group">
+              <div className="w-24 h-24 rounded-full bg-white flex items-center justify-center border shadow-sm">
+                <img src="/hemeson-logo.png" alt="Logo" className="w-16 h-16 object-contain" />
               </div>
             </Link>
           </div>
-          <CardTitle className="text-2xl font-display">PinGuard Portal</CardTitle>
-          <CardDescription>
-            Check your academic results securely
-          </CardDescription>
+          <CardTitle className="text-2xl font-bold">Student Portal Access</CardTitle>
+          <CardDescription>Enter details to view your result</CardDescription>
         </CardHeader>
 
         <form onSubmit={handleSubmit}>
@@ -150,15 +153,11 @@ export default function ResultsPortal() {
               <Label htmlFor="admission">Admission Number</Label>
               <Input
                 id="admission"
-                type="text"
-                placeholder="e.g., HMA/2025/001"
+                placeholder="HMA/2025/001"
                 value={admissionNumber}
-                onChange={(e) => {
-                  setAdmissionNumber(e.target.value.toUpperCase());
-                  setError(null);
-                }}
+                onChange={(e) => setAdmissionNumber(e.target.value.toUpperCase())}
                 disabled={isLoading}
-                className={`font-mono ${error && !usageExceeded ? 'border-destructive' : ''}`}
+                className="font-mono uppercase"
               />
             </div>
 
@@ -169,61 +168,42 @@ export default function ResultsPortal() {
                 <Input
                   id="pin"
                   type="password"
-                  placeholder="Enter your PIN"
+                  placeholder="••••••••"
                   value={pin}
-                  onChange={(e) => {
-                    setPin(e.target.value);
-                    setError(null);
-                  }}
+                  onChange={(e) => setPin(e.target.value)}
                   disabled={isLoading}
-                  className={`pl-10 font-mono ${error && !usageExceeded ? 'border-destructive' : ''}`}
+                  className="pl-10 font-mono"
                 />
               </div>
             </div>
 
             {error && !usageExceeded && (
-              <div className="flex items-center gap-2 text-destructive text-sm">
+              <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 p-3 rounded-md border border-red-100">
                 <AlertCircle className="h-4 w-4" />
                 {error}
               </div>
             )}
 
             {usageExceeded && (
-              <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg space-y-3">
-                <div className="flex items-center gap-2 text-destructive font-medium">
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
+                <div className="flex items-center gap-2 text-amber-700 font-medium">
                   <AlertCircle className="h-5 w-5" />
                   PIN Usage Limit Reached
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  Your PIN has been used the maximum number of times. Please contact the school admin to get a new PIN.
+                <p className="text-sm text-amber-600">
+                  This PIN has been used the maximum allowed times.
                 </p>
-                <Button variant="outline" className="w-full" asChild>
-                  <a href="tel:+2341234567890">
-                    <Phone className="mr-2 h-4 w-4" />
-                    Contact Admin
-                  </a>
+                <Button variant="outline" className="w-full border-amber-200" asChild>
+                  <a href="tel:+2341234567890"><Phone className="mr-2 h-4 w-4" /> Contact Admin</a>
                 </Button>
               </div>
             )}
 
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={isLoading || !admissionNumber.trim() || !pin.trim()}
-            >
-              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              View Results
+            <Button type="submit" className="w-full h-11 bg-blue-600 hover:bg-blue-700" disabled={isLoading || !admissionNumber || !pin}>
+              {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Check Result"}
             </Button>
           </CardContent>
         </form>
-
-        <div className="px-6 pb-6">
-          <div className="p-4 bg-muted/50 rounded-lg">
-            <p className="text-sm text-muted-foreground text-center">
-              Your PIN can only be used a limited number of times. Keep it secure.
-            </p>
-          </div>
-        </div>
       </Card>
     </div>
   );

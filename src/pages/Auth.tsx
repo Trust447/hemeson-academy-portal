@@ -122,12 +122,12 @@ export default function Auth() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-subtle p-4">
-      <Card className="w-full max-w-md">
+      <Card className="w-full max-w-md border-t-4 border-t-blue-600">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
             <Link to="/">
-              <div className="w-28 h-28 rounded-xl bg-slate-100 flex items-center justify-center shadow-lg group-hover:shadow-xl transition-shadow">
-                <img src="/hemeson-logo.png" alt="" className="w-16 h-18" />
+              <div className="w-24 h-24 rounded-full bg-slate-50 flex items-center justify-center ">
+                <img src="/hemeson-logo.png" alt="" className="w-16 h-16" />
               </div>
             </Link>
           </div>

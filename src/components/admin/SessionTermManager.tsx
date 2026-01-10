@@ -1,14 +1,17 @@
 import { useState, useEffect } from "react";
-import { Calendar, Check, Plus, Loader2, ArrowUpCircle, AlertTriangle } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Calendar, Check, Plus, Loader2, ArrowUpCircle } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { Database } from "@/integrations/supabase/types";
+
+type TermType = Database["public"]["Enums"]["term_type"];
 
 const getTermLabel = (type: string) => {
   const labels: Record<string, string> = {
@@ -37,13 +40,21 @@ export function SessionTermManager() {
     try {
       const { data: sessionData } = await supabase.from('sessions').select('*').order('start_year', { ascending: false });
       const { data: termData } = await supabase.from('terms').select('*');
-      const { data: classData } = await supabase.from('classes').select('*').order('level', { ascending: true });
+      const { data: classData, error: classError } = await supabase.from('classes').select('*');
+      
+      if (classError) throw classError;
       
       if (sessionData) setSessions(sessionData);
       if (termData) setTerms(termData);
-      if (classData) setClasses(classData);
-    } catch (err) {
-      console.error(err);
+      
+      if (classData) {
+        const sortedClasses = (classData as any[]).sort((a, b) => 
+          (Number(a.level_order) || 0) - (Number(b.level_order) || 0)
+        );
+        setClasses(sortedClasses);
+      }
+    } catch (err: any) {
+      console.error("Fetch error:", err.message);
     } finally {
       setLoading(false);
     }
@@ -51,85 +62,79 @@ export function SessionTermManager() {
 
   useEffect(() => { fetchData(); }, []);
 
-  // --- NEW: PROMOTION LOGIC ---
+  // ---------------- Updated Promotion Logic ----------------
   const handleBulkPromotion = async () => {
+    if (!classes || classes.length < 2) return;
+
     setIsPromoting(true);
+    console.log("Starting academic roll-over...");
+
     try {
-      // We promote from the bottom up (e.g., SS2 to SS3 first) to avoid mixing students
-      // We assume your classes are ordered by level in the database
-      for (let i = classes.length - 2; i >= 0; i--) {
-        const currentClass = classes[i];
-        const nextClass = classes[i + 1];
+      // Promote students using Supabase RPC
+      const { error: rpcError } = await (supabase.rpc as any)('promote_all_students');
+      if (rpcError) throw rpcError;
 
-        const { error } = await supabase
-          .from('students')
-          .update({ class_id: nextClass.id })
-          .eq('class_id', currentClass.id);
-        
-        if (error) throw error;
-      }
-
-      toast({ 
-        title: "Promotion Successful", 
-        description: "All students have been moved to the next academic level." 
+      toast({
+        title: "Promotion Success",
+        description: "All students promoted. SS3 students marked as graduated."
       });
-      fetchData();
+
+      await fetchData();
     } catch (err: any) {
+      console.error("Promotion failed:", err);
       toast({ title: "Promotion Failed", description: err.message, variant: "destructive" });
     } finally {
       setIsPromoting(false);
     }
   };
+  // ---------------------------------------------------------
 
   const handleSetCurrentSession = async (sessionId: string) => {
     try {
-      await supabase.from('sessions').update({ is_current: false }).neq('id', sessionId);
-      const { error } = await supabase.from('sessions').update({ is_current: true }).eq('id', sessionId);
-      if (error) throw error;
-      await fetchData();
-      toast({ title: "Session Updated", description: "The active session has been changed." });
-    } catch (err: any) {
-      toast({ title: "Update Failed", description: err.message, variant: "destructive" });
-    }
+      await supabase.from('sessions').update({ is_current: false } as any).neq('id', sessionId);
+      await supabase.from('sessions').update({ is_current: true } as any).eq('id', sessionId);
+      fetchData();
+      toast({ title: "Active Session Updated" });
+    } catch (err) { console.error(err); }
   };
 
   const handleSetCurrentTerm = async (termId: string) => {
     try {
-      await supabase.from('terms').update({ is_current: false }).neq('id', termId);
-      const { error } = await supabase.from('terms').update({ is_current: true }).eq('id', termId);
-      if (error) throw error;
-      await fetchData();
-      toast({ title: "Term Updated", description: "The active term has been changed." });
-    } catch (err: any) {
-      toast({ title: "Update Failed", description: err.message, variant: "destructive" });
-    }
+      await supabase.from('terms').update({ is_current: false } as any).neq('id', termId);
+      await supabase.from('terms').update({ is_current: true } as any).eq('id', termId);
+      fetchData();
+      toast({ title: "Active Term Updated" });
+    } catch (err) { console.error(err); }
   };
 
   const handleCreateSession = async () => {
     try {
-      const sessionName = `${newSessionYear}/${newSessionYear + 1}`;
       const { data: newSession, error: sError } = await supabase
         .from('sessions')
-        .insert([{ name: sessionName, start_year: newSessionYear, end_year: newSessionYear + 1, is_current: false }])
+        .insert([{ 
+          name: `${newSessionYear}/${newSessionYear + 1}`, 
+          start_year: newSessionYear, 
+          end_year: newSessionYear + 1, 
+          is_current: false 
+        }] as any)
         .select().single();
 
       if (sError) throw sError;
 
-      const termTypes = ['first', 'second', 'third'] as const;
-      const termsToInsert = termTypes.map(type => ({
-        session_id: newSession.id,
-        term_type: type,
-        is_current: false
-      }));
+      const termsToInsert = [
+        { session_id: newSession.id, term_type: 'first' as TermType, is_current: false },
+        { session_id: newSession.id, term_type: 'second' as TermType, is_current: false },
+        { session_id: newSession.id, term_type: 'third' as TermType, is_current: false }
+      ];
 
-      const { error: tError } = await supabase.from('terms').insert(termsToInsert);
+      const { error: tError } = await supabase.from('terms').insert(termsToInsert as any);
       if (tError) throw tError;
 
       setIsCreateDialogOpen(false);
-      await fetchData();
-      toast({ title: "Session Created", description: `Academic session ${sessionName} created.` });
+      fetchData();
+      toast({ title: "New Session Created" });
     } catch (err: any) {
-      toast({ title: "Creation Failed", description: err.message, variant: "destructive" });
+      toast({ title: "Failed", description: err.message, variant: "destructive" });
     }
   };
 
@@ -139,60 +144,55 @@ export function SessionTermManager() {
 
   return (
     <div className="space-y-6">
+      {/* Active Status Banner */}
       <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-primary">
             <Calendar className="h-5 w-5" />
-            Active Academic Period
+            Current Academic Context
           </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-12">
           <div className="space-y-1">
-            <p className="text-xs uppercase text-muted-foreground font-semibold">Active Session</p>
-            <p className="text-3xl font-bold tracking-tight">{currentSession?.name || 'Not Set'}</p>
+            <p className="text-xs uppercase text-muted-foreground font-semibold">Session</p>
+            <p className="text-3xl font-bold">{currentSession?.name || 'Not Set'}</p>
           </div>
           <div className="space-y-1">
-            <p className="text-xs uppercase text-muted-foreground font-semibold">Active Term</p>
-            <p className="text-3xl font-bold tracking-tight">{currentTerm ? getTermLabel(currentTerm.term_type) : 'Not Set'}</p>
+            <p className="text-xs uppercase text-muted-foreground font-semibold">Term</p>
+            <p className="text-3xl font-bold">{currentTerm ? getTermLabel(currentTerm.term_type) : 'Not Set'}</p>
           </div>
         </CardContent>
       </Card>
 
-      {/* --- NEW: PROMOTION TOOL CARD --- */}
-      <Card className="border-amber-200 bg-amber-50/30">
+      {/* Promotion Action Card */}
+      <Card className="border-amber-200 bg-amber-50/40">
         <CardContent className="p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-amber-100 rounded-full text-amber-600">
               <ArrowUpCircle className="h-5 w-5" />
             </div>
             <div>
-              <p className="font-bold text-amber-900">Session Roll-over</p>
-              <p className="text-xs text-amber-700">Promote all students to their next class level for the new session.</p>
+              <p className="font-bold text-amber-900">Academic Roll-over</p>
+              <p className="text-sm text-amber-700">This will promote students to their next classes. SS3 students will be marked as graduated.</p>
             </div>
           </div>
           
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="outline" className="border-amber-300 text-amber-700 hover:bg-amber-100">
-                Promote Students
+              <Button variant="outline" disabled={isPromoting} className="border-amber-400 text-amber-700 hover:bg-amber-100">
+                {isPromoting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Run Promotion"}
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle className="flex items-center gap-2">
-                  <AlertTriangle className="text-amber-500 h-5 w-5" />
-                  Confirm Mass Promotion
-                </AlertDialogTitle>
+                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This will move <strong>EVERY</strong> student to the next class level. 
-                  Please ensure you have manually graduated your final year students (e.g., SS3) by setting them to inactive first.
+                  Students will move up one level. SS3 students will be marked inactive (Graduated).
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleBulkPromotion} className="bg-amber-600 hover:bg-amber-700">
-                  Yes, Promote All
-                </AlertDialogAction>
+                <AlertDialogAction onClick={handleBulkPromotion} className="bg-amber-600">Confirm & Process</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
@@ -200,22 +200,19 @@ export function SessionTermManager() {
       </Card>
 
       <div className="flex items-center justify-between">
-        <h3 className="text-xl font-bold">Academic History</h3>
+        <h3 className="text-xl font-bold">Session History</h3>
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogTrigger asChild>
             <Button><Plus className="h-4 w-4 mr-2" /> New Session</Button>
           </DialogTrigger>
           <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create Academic Session</DialogTitle>
-            </DialogHeader>
+            <DialogHeader><DialogTitle>Create Academic Session</DialogTitle></DialogHeader>
             <div className="py-4 space-y-4">
-              <Label>Starting Year</Label>
+              <Label>Start Year</Label>
               <Input type="number" value={newSessionYear} onChange={(e) => setNewSessionYear(parseInt(e.target.value))} />
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>Cancel</Button>
-              <Button onClick={handleCreateSession}>Create Session</Button>
+              <Button onClick={handleCreateSession}>Create</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -223,25 +220,25 @@ export function SessionTermManager() {
 
       <div className="grid gap-4">
         {sessions.map((session) => (
-          <Card key={session.id} className={session.is_current ? 'ring-2 ring-primary shadow-md' : 'bg-slate-50/50'}>
+          <Card key={session.id} className={session.is_current ? 'ring-2 ring-primary shadow-md' : 'opacity-80'}>
             <CardContent className="p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
+              <div className="flex justify-between items-start mb-4">
+                <div>
                   <h4 className="text-xl font-bold">{session.name}</h4>
-                  {session.is_current && <Badge>Active</Badge>}
+                  {session.is_current && <Badge className="mt-1">Active Session</Badge>}
                 </div>
                 {!session.is_current && (
-                  <Button variant="outline" size="sm" onClick={() => handleSetCurrentSession(session.id)}>
-                    <Check className="h-4 w-4 mr-2" /> Make Active
+                  <Button variant="ghost" size="sm" onClick={() => handleSetCurrentSession(session.id)}>
+                    Set as Current
                   </Button>
                 )}
               </div>
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-wrap gap-2">
                 {sessionTerms(session.id).map((term) => (
-                  <Button
-                    key={term.id}
-                    variant={term.is_current ? "default" : "secondary"}
-                    size="sm"
+                  <Button 
+                    key={term.id} 
+                    variant={term.is_current ? "default" : "secondary"} 
+                    size="sm" 
                     onClick={() => handleSetCurrentTerm(term.id)}
                   >
                     {getTermLabel(term.term_type)}

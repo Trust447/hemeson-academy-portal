@@ -1,218 +1,246 @@
 import { useState, useEffect } from "react";
-import { Key, Copy, Check, Plus, Trash2, Loader2 } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { supabase } from "@/integrations/supabase/client";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client"; // REAL SUPABASE IMPORT
-import { TeacherToken } from "@/types/database";
+import { Plus, Trash2, Key, BookOpen, Loader2 } from "lucide-react";
+
+interface TeacherTokenPayload {
+  token: string;
+  teacher_name: string;
+  term_id: string;
+  assignments: any[];
+  is_used: boolean;
+}
+
+const fetchPortalFormData = async () => {
+  const client = supabase as any;
+  
+  // LOG: This helps you verify the new code is running in the browser
+  console.log("System: Fetching fresh database records...");
+
+  const [cls, sub, trm, sess] = await Promise.all([
+    client.from('classes').select('*'),
+    client.from('subjects').select('*'),
+    client.from('terms').select('*'), // STRICTLY NO .eq() FILTERS HERE
+    client.from('sessions').select('*')
+  ]);
+  
+  const formattedTerms = (trm.data || []).map((t: any) => {
+    const session = (sess.data || []).find((s: any) => s.id === t.session_id);
+    const termLabel = t.term_type ? t.term_type.replace('_', ' ') : "Unknown Term";
+    const sessionLabel = session ? `(${session.name})` : "";
+    
+    return {
+      ...t,
+      display_name: `${termLabel} ${sessionLabel}`.trim()
+    };
+  });
+  
+  return { 
+    classes: cls.data || [], 
+    subjects: sub.data || [], 
+    terms: formattedTerms 
+  };
+};
 
 export function TokenGenerator() {
-  const [tokens, setTokens] = useState<TeacherToken[]>([]);
+  const [teacherName, setTeacherName] = useState("");
   const [classes, setClasses] = useState<any[]>([]);
   const [subjects, setSubjects] = useState<any[]>([]);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [selectedClass, setSelectedClass] = useState<string>('');
-  const [selectedSubject, setSelectedSubject] = useState<string>('');
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [terms, setTerms] = useState<any[]>([]);
+  
+  const [selectedClass, setSelectedClass] = useState("");
+  const [selectedSubject, setSelectedSubject] = useState("");
+  const [selectedTerm, setSelectedTerm] = useState("");
+  
+  const [assignments, setAssignments] = useState<any[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
 
-  // 1. FETCH REAL DATA ON LOAD
   useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
+    const loadData = async () => {
       try {
-        const [clsRes, subRes, tknRes] = await Promise.all([
-          supabase.from('classes').select('*').order('level'),
-          supabase.from('subjects').select('*').order('name'),
-          supabase.from('teacher_tokens').select('*, classes(level, section), subjects(name)').order('created_at', { ascending: false })
-        ]);
-
-        if (clsRes.data) setClasses(clsRes.data);
-        if (subRes.data) setSubjects(subRes.data);
-        if (tknRes.data) setTokens(tknRes.data as any);
+        const data = await fetchPortalFormData();
+        setClasses(data.classes);
+        setSubjects(data.subjects);
+        setTerms(data.terms);
       } catch (error) {
-        console.error("Error fetching data:", error);
-      } finally {
-        setIsLoading(false);
+        console.error("Critical: Data load failed", error);
       }
     };
-    fetchData();
+    loadData();
   }, []);
 
-  // 2. GENERATE REAL TOKEN
-  const handleGenerateToken = async () => {
+  const addAssignmentToList = () => {
     if (!selectedClass || !selectedSubject) {
-      toast({ title: "Missing Selection", description: "Select both class and subject.", variant: "destructive" });
+      toast({ 
+        title: "Selection Required", 
+        description: "Pick a class and a subject first.", 
+        variant: "destructive" 
+      });
       return;
     }
 
-    // Secure random string generation
-    const generatedToken = Math.random().toString(36).substring(2, 12).toUpperCase();
+    const classData = classes.find(c => c.id === selectedClass);
+    const subjectData = subjects.find(s => s.id === selectedSubject);
+    const isDuplicate = assignments.find(a => a.class_id === selectedClass && a.subject_id === selectedSubject);
+    
+    if (isDuplicate) {
+      toast({ 
+        title: "Already Added", 
+        description: "This pair is already in the list.", 
+        variant: "destructive" 
+      });
+      return;
+    }
 
-    const { data, error } = await supabase
-      .from('teacher_tokens')
-      .insert([{
-        token: generatedToken,
-        class_id: selectedClass,
-        subject_id: selectedSubject,
-        expires_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(), // 48 Hours
-      }])
-      .select('*, classes(level, section), subjects(name)')
-      .single();
+    setAssignments([...assignments, {
+      class_id: selectedClass,
+      class_name: classData?.level || classData?.name,
+      subject_id: selectedSubject,
+      subject_name: subjectData?.name
+    }]);
+
+    setSelectedClass("");
+    setSelectedSubject("");
+  };
+
+  const removeAssignmentFromList = (index: number) => {
+    setAssignments(assignments.filter((_, i) => i !== index));
+  };
+
+  const generateToken = async () => {
+    if (!teacherName || !selectedTerm || assignments.length === 0) {
+      toast({ 
+        title: "Missing Info", 
+        description: "Please complete all steps.", 
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    const newToken = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+    const payload: TeacherTokenPayload = {
+      token: newToken,
+      teacher_name: teacherName,
+      term_id: selectedTerm,
+      assignments: assignments,
+      is_used: false
+    };
+
+    const { error } = await (supabase.from('teacher_tokens') as any).insert(payload);
 
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
-      setTokens(prev => [data as any, ...prev]);
-      setIsDialogOpen(false);
-      setSelectedClass('');
-      setSelectedSubject('');
-      toast({ title: "Token Generated", description: `Access code created: ${generatedToken}` });
+      toast({ 
+        title: "Token Generated", 
+        description: `Token ${newToken} assigned to ${teacherName}.` 
+      });
+      setTeacherName("");
+      setAssignments([]);
+      setSelectedTerm("");
     }
+    setIsSaving(false);
   };
-
-  // 3. DELETE REAL TOKEN
-  const handleDeleteToken = async (id: string) => {
-    const { error } = await supabase.from('teacher_tokens').delete().eq('id', id);
-
-    if (error) {
-      toast({ title: "Error", description: "Could not delete token.", variant: "destructive" });
-    } else {
-      setTokens(prev => prev.filter(t => t.id !== id));
-      toast({ title: "Token Deleted" });
-    }
-  };
-
-  const handleCopyToken = async (token: string, id: string) => {
-    await navigator.clipboard.writeText(token);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
-    toast({ title: "Copied", description: "Token copied to clipboard" });
-  };
-
-  const activeTokens = tokens.filter(t => !t.is_used).length;
-  const usedTokens = tokens.filter(t => t.is_used).length;
-
-  if (isLoading) {
-    return (
-      <div className="h-64 flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
 
   return (
-    <div className="space-y-6">
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                <Key className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold font-display">{tokens.length}</p>
-                <p className="text-sm text-muted-foreground">Total Tokens</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        {/* ... (Repeat for Active and Used stats using activeTokens and usedTokens) */}
-      </div>
-
-      <Card>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-1">
+      <Card className="border-2 shadow-sm">
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Key className="h-5 w-5" />
-                Teacher Tokens
-              </CardTitle>
-              <CardDescription>Generate unique tokens for specific class-subject access.</CardDescription>
-            </div>
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-              <DialogTrigger asChild>
-                <Button><Plus className="h-4 w-4 mr-2" /> Generate Token</Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Generate Teacher Token</DialogTitle>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
-                    <Label>Class</Label>
-                    <Select value={selectedClass} onValueChange={setSelectedClass}>
-                      <SelectTrigger><SelectValue placeholder="Select a class" /></SelectTrigger>
-                      <SelectContent>
-                        {classes.map(cls => (
-                          <SelectItem key={cls.id} value={cls.id}>{cls.level} {cls.section}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Subject</Label>
-                    <Select value={selectedSubject} onValueChange={setSelectedSubject}>
-                      <SelectTrigger><SelectValue placeholder="Select a subject" /></SelectTrigger>
-                      <SelectContent>
-                        {subjects.map(sub => (
-                          <SelectItem key={sub.id} value={sub.id}>{sub.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-                  <Button onClick={handleGenerateToken}>Generate</Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
+          <CardTitle className="text-lg text-blue-800 font-bold">1. Setup Token</CardTitle>
+          <CardDescription>Assign teacher name and academic term</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="rounded-lg border overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/50">
-                  <TableHead>Token</TableHead>
-                  <TableHead>Class</TableHead>
-                  <TableHead>Subject</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {tokens.map((token: any) => (
-                  <TableRow key={token.id}>
-                    <TableCell><code className="bg-muted px-2 py-1 rounded text-sm font-mono">{token.token}</code></TableCell>
-                    <TableCell>{token.classes?.level} {token.classes?.section || '-'}</TableCell>
-                    <TableCell>{token.subjects?.name || '-'}</TableCell>
-                    <TableCell>
-                      {token.is_used ? <Badge variant="secondary">Used</Badge> : <Badge className="bg-success/10 text-success">Active</Badge>}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => handleCopyToken(token.token, token.id)}>
-                          {copiedId === token.id ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDeleteToken(token.id)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Teacher's Name</Label>
+            <Input 
+                value={teacherName} 
+                onChange={(e) => setTeacherName(e.target.value)} 
+                placeholder="e.g. Mr. Musa" 
+            />
           </div>
+
+          <div className="space-y-2">
+            <Label>Academic Term</Label>
+            <Select onValueChange={setSelectedTerm} value={selectedTerm}>
+              <SelectTrigger>
+                <SelectValue placeholder={terms.length > 0 ? "Select Term" : "No terms found"} />
+              </SelectTrigger>
+              <SelectContent>
+                {terms.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.display_name} {t.is_current && " (Active)"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="pt-4 border-t space-y-4">
+            <Label className="font-bold text-blue-600 uppercase text-xs">2. Add Class & Subject Pairs</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <Select onValueChange={setSelectedClass} value={selectedClass}>
+                <SelectTrigger><SelectValue placeholder="Class" /></SelectTrigger>
+                <SelectContent>
+                  {classes.map(c => <SelectItem key={c.id} value={c.id}>{c.level || c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select onValueChange={setSelectedSubject} value={selectedSubject}>
+                <SelectTrigger><SelectValue placeholder="Subject" /></SelectTrigger>
+                <SelectContent>
+                  {subjects.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button variant="outline" className="w-full border-blue-200 text-blue-700" onClick={addAssignmentToList}>
+              <Plus className="h-4 w-4 mr-2" /> Add Assignment
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-slate-50 border-dashed border-2 flex flex-col">
+        <CardHeader>
+          <CardTitle className="text-lg flex justify-between items-center">
+            <span>Assignment Summary</span>
+            <div className="bg-blue-600 text-white text-xs px-2 py-1 rounded-full">{assignments.length}</div>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4 flex-grow">
+          <div className="min-h-[200px] space-y-2">
+            {assignments.length === 0 && (
+              <div className="text-center py-12 text-muted-foreground italic text-sm">
+                Add at least one pair to generate a token
+              </div>
+            )}
+            {assignments.map((asgn, idx) => (
+              <div key={idx} className="flex items-center justify-between bg-white p-3 rounded border shadow-sm border-blue-100">
+                <div>
+                  <p className="font-bold text-sm">{asgn.class_name}</p>
+                  <p className="text-[10px] uppercase text-slate-500">{asgn.subject_name}</p>
+                </div>
+                <Button variant="ghost" size="icon" onClick={() => removeAssignmentFromList(idx)}>
+                  <Trash2 className="h-4 w-4 text-red-500" />
+                </Button>
+              </div>
+            ))}
+          </div>
+
+          <Button 
+            className="mt-auto w-full bg-blue-700 hover:bg-blue-800 h-12" 
+            onClick={generateToken} 
+            disabled={isSaving || assignments.length === 0}
+          >
+            {isSaving ? <Loader2 className="animate-spin mr-2" /> : <Key className="mr-2 h-4 w-4" />}
+            Generate Teacher Token
+          </Button>
         </CardContent>
       </Card>
     </div>

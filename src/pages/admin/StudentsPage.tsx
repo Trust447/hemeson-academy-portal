@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom"; 
 import { 
   Search, Loader2, UserPlus, List, Upload, 
-  Pencil, Trash2, MoreHorizontal, Eye, KeyRound 
+  Pencil, Trash2, MoreHorizontal, Eye, KeyRound, History, CalendarDays
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -28,13 +28,13 @@ export default function StudentsPage() {
   const [isGenerating, setIsGenerating] = useState(false); 
   const [searchQuery, setSearchQuery] = useState("");
   const [classFilter, setClassFilter] = useState<string>("all");
+  const [view, setView] = useState<"current" | "alumni">("current");
   
   const [refreshStats, setRefreshStats] = useState(0);
   const [studentToDelete, setStudentToDelete] = useState<string | null>(null);
   const [studentToEdit, setStudentToEdit] = useState<any | null>(null);
   const { toast } = useToast();
 
-  // ---------------- Fetch Data ----------------
   const fetchData = async () => {
     try {
       setIsLoading(true);
@@ -53,13 +53,16 @@ export default function StudentsPage() {
         `) as any)
         .order('last_name', { ascending: true });
 
-      // Process status for each student
+      const lastClass = classData?.[classData.length - 1];
+
       const processedStudents = (studentData || []).map(s => {
         let status = "Active";
-        const lastClass = classData?.[classData.length - 1];
-        if (!s.is_active && s.class_id === lastClass?.id) status = "Graduated";
-        else if (!s.is_active) status = "Inactive";
-        return { ...s, status };
+        if (s.status === "graduated" || (!s.is_active && s.class_id === lastClass?.id)) {
+          status = "Graduated";
+        } else if (!s.is_active) {
+          status = "Inactive";
+        }
+        return { ...s, displayStatus: status };
       });
 
       setStudents(processedStudents);
@@ -73,97 +76,69 @@ export default function StudentsPage() {
 
   useEffect(() => { fetchData(); }, []);
 
-  // ---------------- Generate Term PINs ----------------
-  const handleBulkGeneratePins = async () => {
-    try {
-      setIsGenerating(true);
-      const { data: term } = await supabase
-        .from('terms')
-        .select('id')
-        .eq('is_current', true)
-        .maybeSingle();
-
-      if (!term) {
-        toast({ 
-          title: "No Active Term", 
-          description: "Please set a current term in Academic Settings first.", 
-          variant: "destructive" 
-        });
-        return;
-      }
-
-      const { error } = await (supabase.rpc as any)('bulk_generate_term_pins', { target_term_id: term.id });
-      if (error) throw error;
-
-      toast({ title: "Success", description: "PINs generated for all students for this term." });
-      fetchData(); 
-    } catch (error: any) {
-      toast({ title: "Generation Failed", description: error.message, variant: "destructive" });
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  // ---------------- Delete Student ----------------
   const handleDelete = async () => {
     if (!studentToDelete) return;
     const { error } = await supabase.from('students').delete().eq('id', studentToDelete);
-    if (error) toast({ title: "Error", description: "Could not delete student", variant: "destructive" });
+    if (error) toast({ title: "Error", description: "Delete failed", variant: "destructive" });
     else {
-      toast({ title: "Success", description: "Student record deleted" });
+      toast({ title: "Success", description: "Student deleted" });
       fetchData();
     }
     setStudentToDelete(null);
   };
 
-  // ---------------- Update Status ----------------
   const handleStatusChange = async (student: any, newStatus: string) => {
-    let updates: any = {};
-    if (newStatus === "Active") updates.is_active = true;
-    else updates.is_active = false;
-
+    let updates: any = { is_active: newStatus === "Active" };
     const { error } = await supabase.from('students').update(updates).eq('id', student.id);
-    if (error) toast({ title: "Error", description: "Failed to update status", variant: "destructive" });
+    if (error) toast({ title: "Error", description: "Update failed", variant: "destructive" });
     else fetchData();
   };
 
-  // ---------------- Filter Students ----------------
-  const filteredStudents = students.filter(s => {
+  const filteredData = students.filter(s => {
+    if (view === "current" && s.displayStatus === "Graduated") return false;
+    if (view === "alumni" && s.displayStatus !== "Graduated") return false;
+
     const fullName = `${s.first_name} ${s.middle_name || ""} ${s.last_name}`.toLowerCase();
     const query = searchQuery.toLowerCase();
     const matchesSearch = fullName.includes(query) || (s.admission_number || "").toLowerCase().includes(query);
-    const matchesClass = classFilter === "all" || s.class_id === classFilter;
+    const matchesClass = view === "alumni" || classFilter === "all" || s.class_id === classFilter;
+    
     return matchesSearch && matchesClass;
   });
 
-  // ---------------- Render ----------------
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold tracking-tight">Student Management</h1>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">
+            {view === "current" ? "Student Management" : "Alumni Database"}
+          </h1>
+        </div>
         
-        <Button 
-          variant="outline" 
-          onClick={handleBulkGeneratePins}
-          disabled={isGenerating || isLoading}
-          className="border-primary text-primary hover:bg-primary/5"
-        >
-          {isGenerating ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <KeyRound className="mr-2 h-4 w-4" />
-          )}
-          Generate Term PINs
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            variant={view === "current" ? "default" : "outline"} 
+            onClick={() => { setView("current"); setSearchQuery(""); }}
+          >
+            <List className="mr-2 h-4 w-4" /> Current
+          </Button>
+          <Button 
+            variant={view === "alumni" ? "default" : "outline"}
+            className={view === "alumni" ? "bg-blue-600 hover:bg-blue-700 text-white" : ""}
+            onClick={() => { setView("alumni"); setSearchQuery(""); }}
+          >
+            <History className="mr-2 h-4 w-4" /> Alumni
+          </Button>
+        </div>
       </div>
 
-      <StudentStats key={refreshStats} />
+      {view === "current" && <StudentStats key={refreshStats} />}
 
       <Tabs defaultValue="list">
         <TabsList className="grid w-full max-w-md grid-cols-3">
-          <TabsTrigger value="list"><List className="h-4 w-4 mr-2" /> List</TabsTrigger>
-          <TabsTrigger value="manual"><UserPlus className="h-4 w-4 mr-2" /> Admission</TabsTrigger>
-          <TabsTrigger value="upload"><Upload className="h-4 w-4 mr-2" /> Bulk</TabsTrigger>
+          <TabsTrigger value="list"><Search className="h-4 w-4 mr-2" /> Directory</TabsTrigger>
+          <TabsTrigger value="manual" disabled={view === "alumni"}><UserPlus className="h-4 w-4 mr-2" /> Admission</TabsTrigger>
+          <TabsTrigger value="upload" disabled={view === "alumni"}><Upload className="h-4 w-4 mr-2" /> Bulk</TabsTrigger>
         </TabsList>
 
         <TabsContent value="list" className="space-y-4 pt-4">
@@ -171,96 +146,85 @@ export default function StudentsPage() {
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input 
-                placeholder="Search name or admission number..." 
+                placeholder={view === "current" ? "Search current students..." : "Search alumni..."}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-8"
               />
             </div>
-            <Select value={classFilter} onValueChange={setClassFilter}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="All Classes" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Classes</SelectItem>
-                {classes.map(c => <SelectItem key={c.id} value={c.id}>{c.level}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            {view === "current" && (
+              <Select value={classFilter} onValueChange={setClassFilter}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="All Classes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Classes</SelectItem>
+                  {classes.map(c => <SelectItem key={c.id} value={c.id}>{c.level}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
-          <div className="border rounded-lg bg-white overflow-hidden">
+          <div className="border rounded-lg bg-white overflow-hidden shadow-sm">
             <Table>
               <TableHeader className="bg-slate-50">
                 <TableRow>
                   <TableHead>Admission No</TableHead>
                   <TableHead>Full Name</TableHead>
-                  <TableHead>Class</TableHead>
+                  <TableHead>{view === "current" ? "Class" : "Graduation Year"}</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Term PIN</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-10">
-                      <Loader2 className="animate-spin mx-auto text-primary" />
-                    </TableCell>
-                  </TableRow>
+                  <TableRow><TableCell colSpan={5} className="text-center py-10"><Loader2 className="animate-spin mx-auto text-primary" /></TableCell></TableRow>
+                ) : filteredData.length === 0 ? (
+                  <TableRow><TableCell colSpan={5} className="text-center py-10 text-muted-foreground">No records found.</TableCell></TableRow>
                 ) : (
-                  filteredStudents.map(student => (
+                  filteredData.map(student => (
                     <TableRow key={student.id}>
                       <TableCell className="font-mono text-xs font-semibold">{student.admission_number}</TableCell>
-                      <TableCell className="font-medium uppercase">
-                        {student.first_name} {student.middle_name ? `${student.middle_name} ` : ''}{student.last_name}
-                      </TableCell>
+                      <TableCell className="font-medium uppercase">{student.first_name} {student.last_name}</TableCell>
                       <TableCell>
-                        {student.status === "Graduated" ? (
-                          <Badge variant="secondary" className="text-blue-700">Graduated</Badge>
-                        ) : student.classes?.level ? (
-                          student.classes.level
+                        {view === "current" ? (
+                          student.classes?.level || "Unassigned"
                         ) : (
-                          <Badge variant="outline" className="text-gray-400">Unassigned</Badge>
+                          <div className="flex items-center font-bold text-blue-700">
+                            <CalendarDays className="mr-2 h-4 w-4 text-blue-500" />
+                            {student.graduated_at 
+                              ? new Date(student.graduated_at).getFullYear() 
+                              : new Date(student.updated_at).getFullYear()}
+                          </div>
                         )}
                       </TableCell>
                       <TableCell>
-                        <Select 
-                          value={student.status === "Graduated" ? "Graduated" : student.status} 
-                          onValueChange={(value) => value !== "Graduated" && handleStatusChange(student, value)}
-                        >
-                          <SelectTrigger className="w-[120px]">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Active">Active</SelectItem>
-                            <SelectItem value="Inactive">Inactive</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell>
-                        {student.result_pins?.[0]?.pin_code ? (
-                          <Badge variant="secondary" className="font-mono bg-blue-50 text-blue-700 hover:bg-blue-50 border-blue-100">
-                            {student.result_pins[0].pin_code}
-                          </Badge>
+                        {view === "current" ? (
+                          <Select 
+                            value={student.displayStatus} 
+                            onValueChange={(v) => handleStatusChange(student, v)}
+                          >
+                            <SelectTrigger className="w-[110px] h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Active">Active</SelectItem>
+                              <SelectItem value="Inactive">Inactive</SelectItem>
+                            </SelectContent>
+                          </Select>
                         ) : (
-                          <span className="text-muted-foreground text-xs italic text-gray-400">Not Generated</span>
+                          <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-blue-200">Graduated</Badge>
                         )}
                       </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button>
+                            <Button variant="ghost" size="sm"><MoreHorizontal className="h-4 w-4" /></Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => navigate(`/admin/students/${student.id}`)}>
-                              <Eye className="mr-2 h-4 w-4" /> View Full Profile
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setStudentToEdit(student)}>
-                              <Pencil className="mr-2 h-4 w-4" /> Edit Profile
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="text-red-600" onClick={() => setStudentToDelete(student.id)}>
-                              <Trash2 className="mr-2 h-4 w-4" /> Delete Student
-                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => navigate(`/admin/students/${student.id}`)}><Eye className="mr-2 h-4 w-4" /> View Profile</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setStudentToEdit(student)}><Pencil className="mr-2 h-4 w-4" /> Edit Profile</DropdownMenuItem>
+                            <DropdownMenuItem className="text-red-600" onClick={() => setStudentToDelete(student.id)}><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -278,8 +242,8 @@ export default function StudentsPage() {
 
       <Dialog open={!!studentToDelete} onOpenChange={() => setStudentToDelete(null)}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Delete Student Record?</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">This action cannot be undone and will delete all associated PINs.</p>
+          <DialogHeader><DialogTitle>Delete Record?</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">This action cannot be undone.</p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setStudentToDelete(null)}>Cancel</Button>
             <Button variant="destructive" onClick={handleDelete}>Delete</Button>
@@ -292,15 +256,12 @@ export default function StudentsPage() {
           {studentToEdit && (
             <>
               <SheetHeader>
-                <SheetTitle>Edit Student Profile</SheetTitle>
+                <SheetTitle>Edit Record</SheetTitle>
                 <SheetDescription>Update information for {studentToEdit.first_name}</SheetDescription>
               </SheetHeader>
               <EditStudentForm 
                 student={studentToEdit} 
-                onSuccess={() => {
-                  setStudentToEdit(null);
-                  fetchData();
-                }} 
+                onSuccess={() => { setStudentToEdit(null); fetchData(); }} 
               />
             </>
           )}

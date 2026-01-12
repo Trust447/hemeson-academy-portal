@@ -21,7 +21,7 @@ export function EditStudentForm({ student, onSuccess }: { student: any, onSucces
     class_id: "",
     guardian_number: "",
     registration_date: "",
-    date_of_birth: "", // 1. Added birth date to state
+    date_of_birth: "",
   });
 
   useEffect(() => {
@@ -46,7 +46,7 @@ export function EditStudentForm({ student, onSuccess }: { student: any, onSucces
         class_id: student.class_id || "", 
         guardian_number: (student as any).guardian_number || "",
         registration_date: student.registration_date || "",
-        date_of_birth: student.date_of_birth || "", // 2. Load birth date from student prop
+        date_of_birth: student.date_of_birth || "",
       });
     }
   }, [student]);
@@ -57,6 +57,12 @@ export function EditStudentForm({ student, onSuccess }: { student: any, onSucces
     
     setLoading(true);
 
+    // --- LOGIC TO UPDATE YEAR FOR DURATION ---
+    // Extract the year from the registration_date string (YYYY-MM-DD)
+    const yearFromDate = formData.registration_date 
+      ? formData.registration_date.split('-')[0] 
+      : null;
+
     const updateData = {
       admission_number: formData.admission_number,
       first_name: formData.first_name,
@@ -66,13 +72,14 @@ export function EditStudentForm({ student, onSuccess }: { student: any, onSucces
       class_id: formData.class_id && formData.class_id !== "" ? formData.class_id : null,
       guardian_number: formData.guardian_number || null,
       registration_date: formData.registration_date || null,
-      date_of_birth: formData.date_of_birth || null, // 3. Send birth date to Supabase
+      year_registered: yearFromDate, // This ensures the duration on the Detail page updates!
+      date_of_birth: formData.date_of_birth || null,
     };
 
     try {
       const { error } = await supabase
         .from('students')
-        .update(updateData)
+        .update(updateData as any) // Cast as any to avoid strict type mismatch with custom columns
         .eq('id', student.id);
 
       if (error) throw error;
@@ -92,16 +99,6 @@ export function EditStudentForm({ student, onSuccess }: { student: any, onSucces
 
   return (
     <form onSubmit={handleUpdate} className="space-y-4 pt-4 pb-10">
-      {/* <div className="p-3 bg-blue-50 rounded-lg border border-blue-100 space-y-2">
-        <Label className="text-blue-700 font-bold">Admission (Reg) Number</Label>
-        <Input 
-          required 
-          value={formData.admission_number} 
-          onChange={e => setFormData({...formData, admission_number: e.target.value})} 
-          className="bg-white"
-        />
-      </div> */}
-
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="space-y-2">
           <Label>First Name</Label>
@@ -149,7 +146,6 @@ export function EditStudentForm({ student, onSuccess }: { student: any, onSucces
           <Label>Guardian Phone</Label>
           <Input value={formData.guardian_number} onChange={e => setFormData({...formData, guardian_number: e.target.value})} />
         </div>
-        {/* 4. Added Date of Birth Input Field */}
         <div className="space-y-2">
           <Label>Date of Birth</Label>
           <Input 
@@ -161,8 +157,14 @@ export function EditStudentForm({ student, onSuccess }: { student: any, onSucces
       </div>
 
       <div className="space-y-2">
-        <Label>Registration Date</Label>
-        <Input type="date" value={formData.registration_date} onChange={e => setFormData({...formData, registration_date: e.target.value})} />
+        <Label className="text-primary font-semibold">Registration Date</Label>
+        <Input 
+          type="date" 
+          value={formData.registration_date} 
+          onChange={e => setFormData({...formData, registration_date: e.target.value})} 
+          className="border-primary/50 focus:border-primary"
+        />
+        <p className="text-[10px] text-muted-foreground">Changing this will update the enrollment year shown on the student profile.</p>
       </div>
 
       <Button type="submit" className="w-full h-12" disabled={loading}>

@@ -30,6 +30,7 @@ import ContactPage from "./pages/forms/Contact";
 
 // News
 import NewsDetail from "./pages/news/NewsDetail";
+import FeeSettings from "./pages/admin/FeeSettings";
 
 // NOTE: ScoreEntrySheet import removed from here because it is now 
 // rendered as a child of TeacherTokenEntry to receive its props.
@@ -83,6 +84,7 @@ const App = () => (
               <Route path="students/:id" element={<StudentDetail />} />
               <Route path="students/:id/id-card" element={<StudentIDCard />} />
               <Route path="tokens" element={<TokensPage />} />
+              <Route path="fees" element={<FeeSettings />} />
             </Route>
 
             {/* Catch-all */}

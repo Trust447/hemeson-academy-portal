@@ -31,7 +31,7 @@ const menuItems = [
 
 const secondaryItems = [
   { title: "Classes", url: "/admin/classes", icon: BookOpen },
-  { title: "Settings", url: "/admin/settings", icon: Settings },
+  { title: "Fees Settings", url: "/admin/fees", icon: Settings },
 ];
 
 export function AdminSidebar() {
